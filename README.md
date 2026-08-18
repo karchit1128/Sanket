@@ -36,9 +36,9 @@ Sanket utilizes a decoupled frontend/backend architecture to ensure real-time pe
 *   **Animation:** Sequential triggering of `.fbx` animation clips. Fallback to fingerspelling (A-Z) for unknown words using LLM synonym mapping.
 
 ### 3. The "Eyes" (Camera to Text)
-*   **Computer Vision:** Google MediaPipe Holistic extracts 21 `(X,Y,Z)` hand landmarks per frame.
-*   **Classification:** A Sequential LSTM Neural Network (TensorFlow/Keras) analyzes 30-frame windows to predict the exact sign.
-*   **UX:** Implements a "Push-to-Sign" mechanic to ensure 99% accuracy in noisy hackathon environments.
+*   **Computer Vision:** Google MediaPipe Tasks API (`holistic_landmarker.task`) extracts 21 `(X,Y,Z)` hand landmarks and face/pose points per frame.
+*   **Classification:** A Sequential LSTM Neural Network (PyTorch) analyzes 30-frame windows to predict the exact sign.
+*   **UX:** Clean camera UI with a real-time confidence threshold to ensure accuracy in noisy hackathon environments.
 
 
 
@@ -81,6 +81,6 @@ uvicorn main:app --reload
 
 ## ⚠️ Crucial Hackathon Development Traps
 If you are contributing to this project during a hackathon, read these warnings:
-1.  **Shape Mismatches:** If the LSTM crashes with a `ValueError`, check `data.shape`. The ASL tutorial code expects 1662 features per frame. If your ISL dataset only uses hands (126 features), update the `input_shape` in Keras.
+1.  **Shape Mismatches:** If the LSTM crashes with a shape error, check `data.shape`. The older legacy holistic models expected 1662 features per frame. We upgraded to the **MediaPipe Tasks API**, which includes iris tracking, bumping the shape to **1692**. Ensure `train_pytorch.py` uses `input_size = 1692`.
 2.  **Avatar T-Pose Glitch:** If the avatar refuses to sign, the `.glb` bone names (e.g., `LeftArm`) do not match the `.fbx` animation bone names (e.g., `mixamorig:LeftArm`). Run the avatar through Adobe Mixamo to standardize the rig.
 3.  **CORS Errors:** Ensure the FastAPI `CORSMiddleware` is set to `allow_origins=["*"]` during local development to allow Next.js to communicate with the Python backend.

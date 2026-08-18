@@ -27,7 +27,7 @@ with open(os.path.join(os.path.dirname(__file__), 'actions.txt'), 'w') as f:
         f.write(f"{action}\n")
 
 sequence_length = 30
-input_size = 1662
+input_size = 1692
 hidden_size = 64
 num_layers = 3
 num_classes = len(actions)

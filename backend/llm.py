@@ -18,8 +18,11 @@ def translate_to_isl_gloss(text: str) -> str:
             {"role": "system", "content": "You are a strict ISL Gloss translator. Output only the requested gloss."},
             {"role": "user", "content": prompt}
         ],
-        model="llama-3.1-8b-instant",
+        model="qwen/qwen3.6-27b",
         temperature=0.0,
     )
     
-    return response.choices[0].message.content.strip()
+    import re
+    content = response.choices[0].message.content.strip()
+    content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+    return content

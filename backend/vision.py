@@ -42,7 +42,15 @@ class ASLModel(nn.Module):
 class ASLDetector:
     def __init__(self):
         self.sequence = []
-        self.actions = np.array(['hello', 'thanks', 'iloveyou'])
+        
+        # Dynamically load actions
+        actions_path = os.path.join(os.path.dirname(__file__), 'actions.txt')
+        if os.path.exists(actions_path):
+            with open(actions_path, 'r') as f:
+                self.actions = np.array([line.strip() for line in f.readlines()])
+        else:
+            self.actions = np.array(['hello', 'thanks', 'iloveyou']) # Fallback
+            
         self.holistic = mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5)
         
         # Initialize PyTorch Model
@@ -57,7 +65,7 @@ class ASLDetector:
         try:
             self.model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
             self.model.eval()
-            print("Successfully loaded action.pt PyTorch model!")
+            print(f"Successfully loaded action.pt PyTorch model for {num_classes} actions!")
         except Exception as e:
             print(f"WARNING: Could not load action.pt model. Ensure you have trained the data first! Error: {e}")
             self.model = None
@@ -69,7 +77,6 @@ class ASLDetector:
         self.sequence = self.sequence[-30:]
         
         if len(self.sequence) == 30 and self.model is not None:
-            # Convert sequence to PyTorch tensor
             input_tensor = torch.tensor(np.array([self.sequence]), dtype=torch.float32)
             
             with torch.no_grad():

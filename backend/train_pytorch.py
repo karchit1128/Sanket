@@ -8,8 +8,24 @@ from sklearn.model_selection import train_test_split
 
 # 1. Configuration
 DATA_PATH = os.path.join(os.path.dirname(__file__), 'MP_Data')
-actions = np.array(['hello', 'thanks', 'iloveyou'])
-no_sequences = 30
+
+if not os.path.exists(DATA_PATH):
+    print("Error: MP_Data folder not found. Please run collect_data.py or process_dataset.py first.")
+    exit()
+
+# Dynamically find all actions based on folder names
+actions = np.array([d for d in os.listdir(DATA_PATH) if os.path.isdir(os.path.join(DATA_PATH, d))])
+if len(actions) == 0:
+    print("Error: No data found in MP_Data.")
+    exit()
+
+print(f"Found {len(actions)} actions to train on: {actions}")
+
+# Save actions.txt for vision.py to use
+with open(os.path.join(os.path.dirname(__file__), 'actions.txt'), 'w') as f:
+    for action in actions:
+        f.write(f"{action}\n")
+
 sequence_length = 30
 input_size = 1662
 hidden_size = 64
@@ -24,13 +40,24 @@ label_map = {label:num for num, label in enumerate(actions)}
 # 2. Load Data
 sequences, labels = [], []
 for action in actions:
-    for sequence in np.array(os.listdir(os.path.join(DATA_PATH, action))).astype(int):
+    for sequence_folder in os.listdir(os.path.join(DATA_PATH, action)):
+        seq_path = os.path.join(DATA_PATH, action, sequence_folder)
+        if not os.path.isdir(seq_path): continue
+        
         window = []
+        # Check if the sequence has exactly sequence_length frames
+        if len(os.listdir(seq_path)) < sequence_length:
+            continue
+            
         for frame_num in range(sequence_length):
-            res = np.load(os.path.join(DATA_PATH, action, str(sequence), "{}.npy".format(frame_num)))
+            res = np.load(os.path.join(seq_path, "{}.npy".format(frame_num)))
             window.append(res)
         sequences.append(window)
         labels.append(label_map[action])
+
+if len(sequences) == 0:
+    print("Error: No valid 30-frame sequences found.")
+    exit()
 
 X = np.array(sequences)
 y = np.array(labels)
@@ -56,9 +83,7 @@ class ASLModel(nn.Module):
         self.fc2 = nn.Linear(32, num_classes)
         
     def forward(self, x):
-        # x is (batch_size, sequence_length, input_size)
         out, _ = self.lstm(x)
-        # Get the output from the last time step
         out = out[:, -1, :]
         out = self.fc1(out)
         out = self.relu(out)

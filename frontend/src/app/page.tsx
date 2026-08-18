@@ -74,7 +74,7 @@ export default function Home() {
           <div className={`absolute inset-0 transition-opacity duration-500 ${
             activeMode === 'camera' ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           }`}>
-            <DeafToHearing />
+            <DeafToHearing isVisible={activeMode === 'camera'} />
           </div>
         </div>
         

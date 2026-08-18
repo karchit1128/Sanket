@@ -347,7 +347,6 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         dracoLoader.setDecoderPath(
             "https://www.gstatic.com/draco/versioned/decoders/1.5.7/",
         );
-        dracoLoader.setDecoderConfig({ type: "js" });
 
         // Load 3D model with Draco support
         const loader = new GLTFLoader();
@@ -460,8 +459,12 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
                 console.log("✓ Avatar loaded and rendering");
             },
             (progress) => {
-                const percent = (progress.loaded / progress.total) * 100;
-                console.log(`Loading model: ${percent.toFixed(0)}%`);
+                if (progress.total > 0) {
+                    const percent = (progress.loaded / progress.total) * 100;
+                    console.log(`Loading model: ${percent.toFixed(0)}%`);
+                } else {
+                    console.log(`Loading model: ${(progress.loaded / 1024).toFixed(0)} KB`);
+                }
             },
             (error) => {
                 console.error("Error loading 3D model:", error);

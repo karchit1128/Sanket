@@ -3,14 +3,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { Camera, Scan } from 'lucide-react';
 
-export default function DeafToHearing() {
+export default function DeafToHearing({ isVisible }: { isVisible: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLcanvasElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [deafTranslation, setDeafTranslation] = useState('');
+  const [status, setStatus] = useState('idle');
 
   useEffect(() => {
     if (deafTranslation && 'speechSynthesis' in window) {
@@ -21,6 +23,15 @@ export default function DeafToHearing() {
       return () => clearTimeout(timeout);
     }
   }, [deafTranslation]);
+
+  useEffect(() => {
+    if (!isVisible && isCameraActive) {
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      if (wsRef.current) wsRef.current.close();
+      setIsCameraActive(false);
+      setDeafTranslation('');
+    }
+  }, [isVisible, isCameraActive]);
 
   useEffect(() => {
     return () => {
@@ -45,11 +56,26 @@ export default function DeafToHearing() {
         videoRef.current.onloadedmetadata = () => {
           videoRef.current!.play();
           setIsCameraActive(true);
-          wsRef.current = new WebSocket('ws://localhost:8000/ws/video');
+          const wsUrl = `ws://${window.location.hostname}:8000/ws/video`;
+          wsRef.current = new WebSocket(wsUrl);
           wsRef.current.onopen = () => { sendFrames(); };
           wsRef.current.onmessage = (event) => {
             const data = JSON.parse(event.data);
+            if (data.status) setStatus(data.status);
             if (data.prediction) setDeafTranslation(data.prediction);
+            
+            const ctx = overlayRef.current?.getContext('2d');
+            if (ctx && overlayRef.current) {
+              ctx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
+              if (data.landmarks && data.landmarks.length > 0) {
+                ctx.fillStyle = '#3b82f6';
+                data.landmarks.forEach((lm: any) => {
+                  ctx.beginPath();
+                  ctx.arc(lm.x * 640, lm.y * 480, 4, 0, 2 * Math.PI);
+                  ctx.fill();
+                });
+              }
+            }
           };
         };
       }
@@ -64,8 +90,15 @@ export default function DeafToHearing() {
     const ctx = canvasRef.current.getContext('2d');
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0, 640, 480);
-      const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.8);
-      wsRef.current.send(dataUrl);
+      canvasRef.current.toBlob((blob) => {
+        if (blob && wsRef.current?.readyState === WebSocket.OPEN) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            wsRef.current?.send(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        }
+      }, 'image/jpeg', 0.8);
     }
     setTimeout(() => requestAnimationFrame(sendFrames), 100);
   };
@@ -82,14 +115,15 @@ export default function DeafToHearing() {
           autoPlay
           playsInline
           muted
-          style={{ opacity: isCameraActive ? 1 : 0, zindex: isCameraActive ? 0 : -10 }}
+          style={{ opacity: isCameraActive ? 1 : 0, zIndex: isCameraActive ? 0 : -10 }}
           className="absolute inset-0 w-full h-full object-cover [scale-x-1]"
         />
 
         {isCameraActive ? (
           <>
-            <div className="absolute inset-0 pointer-events-none border-2 border-blue-500/30 rounded-3xl" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-blue-500/50 rounded-lg pointer-events-none">
+            <canvas ref={overlayRef} width={640} height={480} className="absolute inset-0 w-full h-full object-cover pointer-events-none [scale-x-1] z-10" />
+            <div className="absolute inset-0 pointer-events-none border-2 border-blue-500/30 rounded-3xl z-20" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-blue-500/50 rounded-lg pointer-events-none z-20">
               <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-blue-400" />
               <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-blue-400" />
               <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-blue-400" />
@@ -117,7 +151,7 @@ export default function DeafToHearing() {
         <div className="flex-1 flex flex-col justify-center min-w-0">
           <span className="text-xs text-gray-400 uppercase tracking-widest mb-1 font-semibold">AI Vision Detection</span>
           <p className="text-lg text-white truncate font-bold tracking-wider">
-            {deafTranslation ? deafTranslation.toUpperCase() : (isCameraActive ? 'Detecting...' : 'Activate AI Vision')}
+            {deafTranslation ? deafTranslation.toUpperCase() : (isCameraActive ? (status === 'detecting' ? 'DETECTING...' : 'AI ACTIVE') : 'Activate AI Vision')}
           </p>
         </div>
       </div>

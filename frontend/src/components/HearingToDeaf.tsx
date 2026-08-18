@@ -20,11 +20,7 @@ export default function HearingToDeaf() {
     pauseDuration: 300,
   });
 
-  useEffect(() => {
-    if (islGloss && containerRef.current) {
-      executeSignSequence(islGloss);
-    }
-  }, [islGloss, executeSignSequence]);
+
 
   const startRecording = () => {
     // @ts-ignore

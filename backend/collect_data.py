@@ -1,106 +1,138 @@
-﻿import cv2
+import cv2
 import numpy as np
 import os
 import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 import time
 
-# MediaPipe Setup
-mp_holistic = mp.solutions.holistic
-mp_drawing = mp.solutions.drawing_utils
-
-def mediapipe_detection(image, model):
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    image.flags.writeable = False
-    results = model.process(image)
-    image.flags.writeable = True
-    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    return image, results
-
-def draw_styled_landmarks(image, results):
-    # Draw face connections
-    if results.face_landmarks:
-        mp_drawing.draw_landmarks(image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION, 
-                                 mp_drawing.DrawingSpec(color=(80,110,10), thickness=1, circle_radius=1), 
-                                 mp_drawing.DrawingSpec(color=(80,256,121), thickness=1, circle_radius=1)) 
-    # Draw pose connections
+def normalize_keypoints(results):
     if results.pose_landmarks:
-        mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS,
-                                 mp_drawing.DrawingSpec(color=(80,22,10), thickness=2, circle_radius=4), 
-                                 mp_drawing.DrawingSpec(color=(80,44,121), thickness=2, circle_radius=2)) 
-    # Draw left hand connections
-    if results.left_hand_landmarks:
-        mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
-                                 mp_drawing.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=4), 
-                                 mp_drawing.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2)) 
-    # Draw right hand connections  
-    if results.right_hand_landmarks:
-        mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
-                                 mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=4), 
-                                 mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)) 
+        nx = results.pose_landmarks[0].x
+        ny = results.pose_landmarks[0].y
+        nz = results.pose_landmarks[0].z
+    else:
+        nx, ny, nz = 0.0, 0.0, 0.0
 
-def extract_keypoints(results):
-    pose = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark]).flatten() if results.pose_landmarks else np.zeros(33*4)
-    face = np.array([[res.x, res.y, res.z] for res in results.face_landmarks.landmark]).flatten() if results.face_landmarks else np.zeros(468*3)
-    lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten() if results.left_hand_landmarks else np.zeros(21*3)
-    rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
-    return np.concatenate([pose, face, lh, rh])
+    if results.pose_landmarks:
+        pose = np.array([[r.x-nx, r.y-ny, r.z-nz, float(getattr(r,'visibility',0.0) or 0.0)] for r in results.pose_landmarks]).flatten()
+    else:
+        pose = np.zeros(33*4)
+
+    if results.left_hand_landmarks:
+        lh = np.array([[r.x-nx, r.y-ny, r.z-nz] for r in results.left_hand_landmarks]).flatten()
+    else:
+        lh = np.zeros(21*3)
+
+    if results.right_hand_landmarks:
+        rh = np.array([[r.x-nx, r.y-ny, r.z-nz] for r in results.right_hand_landmarks]).flatten()
+    else:
+        rh = np.zeros(21*3)
+
+    kp = np.concatenate([pose, lh, rh])
+    return kp if kp.shape[0] == 258 else np.zeros(258)
+
+def draw_landmarks_on_image(rgb_image, detection_result):
+    for hand_landmarks in [detection_result.left_hand_landmarks, detection_result.right_hand_landmarks]:
+        if hand_landmarks:
+            for landmark in hand_landmarks:
+                x = int(landmark.x * rgb_image.shape[1])
+                y = int(landmark.y * rgb_image.shape[0])
+                cv2.circle(rgb_image, (x, y), 5, (0, 0, 255), -1)
+                
+    if detection_result.pose_landmarks:
+        for landmark in detection_result.pose_landmarks:
+            x = int(landmark.x * rgb_image.shape[1])
+            y = int(landmark.y * rgb_image.shape[0])
+            cv2.circle(rgb_image, (x, y), 3, (0, 255, 0), -1)
 
 # Data Collection Configuration
-DATA_PATH = os.path.join(os.path.dirname(__file__), 'MP_Data')
-actions = np.array(['hello', 'thanks', 'iloveyou'])
+DATA_PATH = os.path.join(os.path.dirname(__file__), 'dataset')
+actions = ['Alright', 'Good evening', 'Good night', 'How are you', 'Pleased', 'Thank you']
 no_sequences = 30
-sequence_length = 30
+sequence_length = 30 # 30 frames per video (3 seconds total)
+
+print("Available signs to record:")
+for i, act in enumerate(actions):
+    print(f"{i+1}. {act}")
+
+print("")
+choice = input("Enter the number of the sign you want to record (or 'all' for all): ")
+if choice.strip().lower() == 'all':
+    selected_actions = actions
+else:
+    try:
+        idx = int(choice) - 1
+        if idx < 0 or idx >= len(actions): raise ValueError()
+        selected_actions = [actions[idx]]
+    except:
+        print("Invalid choice. Exiting.")
+        exit()
 
 # Create Folders
-for action in actions:
-    for sequence in range(no_sequences):
-        try:
-            os.makedirs(os.path.join(DATA_PATH, action, str(sequence)))
-        except:
-            pass
+for action in selected_actions:
+    os.makedirs(os.path.join(DATA_PATH, action), exist_ok=True)
+
+model_path = os.path.join(os.path.dirname(__file__), 'holistic_landmarker.task')
+base_options = python.BaseOptions(model_asset_path=model_path)
+options = vision.HolisticLandmarkerOptions(base_options=base_options, output_face_blendshapes=False)
+landmarker = vision.HolisticLandmarker.create_from_options(options)
 
 print("Starting Data Collection in 3 seconds. Get ready!")
 time.sleep(3)
 
 cap = cv2.VideoCapture(0)
-with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
-    for action in actions:
-        for sequence in range(no_sequences):
-            for frame_num in range(sequence_length):
-                ret, frame = cap.read()
-                if not ret:
-                    continue
-                
-                # Make detections
-                image, results = mediapipe_detection(frame, holistic)
-                
-                # Draw landmarks
-                draw_styled_landmarks(image, results)
-                
-                # Apply wait logic
+frame_counter = 0
+
+for action in selected_actions:
+    print(f"\n--- Get ready for '{action}' ---")
+    cv2.waitKey(2000)
+    for sequence in range(no_sequences):
+        frame_num = 0
+        while frame_num < sequence_length:
+            ret, frame = cap.read()
+            if not ret: continue
+            
+            frame_counter += 1
+            
+            # 10 FPS extraction (1 frame every 3 ticks)
+            if frame_counter % 3 != 0:
+                display_frame = cv2.flip(frame, 1)
                 if frame_num == 0:
-                    cv2.putText(image, 'STARTING COLLECTION', (120,200), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255, 0), 4, cv2.LINE_AA)
-                    cv2.putText(image, f'Collecting frames for {action} Video Number {sequence}', (15,12), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-                    cv2.imshow('OpenCV Feed', image)
-                    cv2.waitKey(2000) # 2 second break between videos
-                else:
-                    cv2.putText(image, f'Collecting frames for {action} Video Number {sequence}', (15,12), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-                    cv2.imshow('OpenCV Feed', image)
-                
-                # Export keypoints
-                keypoints = extract_keypoints(results)
-                npy_path = os.path.join(DATA_PATH, action, str(sequence), str(frame_num))
-                np.save(npy_path, keypoints)
-                
-                # Break gracefully
-                if cv2.waitKey(10) & 0xFF == ord('q'):
+                    cv2.putText(display_frame, 'STARTING COLLECTION', (120,200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255, 0), 4, cv2.LINE_AA)
+                cv2.putText(display_frame, f'Collecting frames for {action} Video Number {sequence}', (15,12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+                cv2.imshow('Data Collection', display_frame)
+                if cv2.waitKey(1) & 0xFF == ord('q'):
                     cap.release()
                     cv2.destroyAllWindows()
                     exit()
+                # Wait before starting the sequence
+                if frame_num == 0:
+                    cv2.waitKey(2000) 
+                continue
+                
+            # Process UNFLIPPED frame
+            image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+            results = landmarker.detect(mp_image)
+            
+            # Export keypoints
+            keypoints = normalize_keypoints(results)
+            npy_path = os.path.join(DATA_PATH, action, f'{sequence}_{frame_num}.npy')
+            np.save(npy_path, keypoints)
+            
+            # Draw on display frame
+            draw_landmarks_on_image(frame, results)
+            display_frame = cv2.flip(frame, 1)
+            cv2.putText(display_frame, f'Collecting frames for {action} Video Number {sequence}', (15,12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.imshow('Data Collection', display_frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                cap.release()
+                cv2.destroyAllWindows()
+                exit()
+            
+            frame_num += 1
 
 cap.release()
 cv2.destroyAllWindows()
-print("Data collection completed successfully!")
+print("Data collection completed successfully! You can now run train_model.py")

@@ -11,21 +11,36 @@ def normalize_keypoints(results):
         nx = results.pose_landmarks[0].x
         ny = results.pose_landmarks[0].y
         nz = results.pose_landmarks[0].z
+        # Calculate horizontal proxy (shoulder width)
+        l_sh = results.pose_landmarks[11]
+        r_sh = results.pose_landmarks[12]
+        shoulder_width = np.sqrt((l_sh.x - r_sh.x)**2 + (l_sh.y - r_sh.y)**2)
+        
+        # Calculate vertical proxy (nose to neck distance)
+        neck_x = (l_sh.x + r_sh.x) / 2
+        neck_y = (l_sh.y + r_sh.y) / 2
+        neck_dist = np.sqrt((nx - neck_x)**2 + (ny - neck_y)**2)
+        
+        # Robust scale factor (immune to turning sideways)
+        scale = max(shoulder_width, neck_dist * 2.5)
+        if scale < 0.01:
+            scale = 1.0
     else:
         nx, ny, nz = 0.0, 0.0, 0.0
+        scale = 1.0
 
     if results.pose_landmarks:
-        pose = np.array([[r.x-nx, r.y-ny, r.z-nz, float(getattr(r,'visibility',0.0) or 0.0)] for r in results.pose_landmarks]).flatten()
+        pose = np.array([[(r.x-nx)/scale, (r.y-ny)/scale, (r.z-nz)/scale, float(getattr(r,'visibility',0.0) or 0.0)] for r in results.pose_landmarks]).flatten()
     else:
         pose = np.zeros(33*4)
 
     if results.left_hand_landmarks:
-        lh = np.array([[r.x-nx, r.y-ny, r.z-nz] for r in results.left_hand_landmarks]).flatten()
+        lh = np.array([[(r.x-nx)/scale, (r.y-ny)/scale, (r.z-nz)/scale] for r in results.left_hand_landmarks]).flatten()
     else:
         lh = np.zeros(21*3)
 
     if results.right_hand_landmarks:
-        rh = np.array([[r.x-nx, r.y-ny, r.z-nz] for r in results.right_hand_landmarks]).flatten()
+        rh = np.array([[(r.x-nx)/scale, (r.y-ny)/scale, (r.z-nz)/scale] for r in results.right_hand_landmarks]).flatten()
     else:
         rh = np.zeros(21*3)
 

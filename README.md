@@ -40,15 +40,7 @@ Sanket utilizes a decoupled frontend/backend architecture to ensure real-time pe
 *   **Classification:** A Sequential LSTM Neural Network (TensorFlow/Keras) analyzes 30-frame windows to predict the exact sign.
 *   **UX:** Implements a "Push-to-Sign" mechanic to ensure 99% accuracy in noisy hackathon environments.
 
----
 
-## 🤝 Open Source Attributions & Architectural Bootstrapping
-Building a real-time 3D ISL translator in 36 hours requires standing on the shoulders of giants. Sanket's architecture is heavily bootstrapped from the following open-source projects:
-
-1.  **[nicknochnack/ActionDetectionforSignLanguage](https://github.com/nicknochnack/ActionDetectionforSignLanguage):** Provided the foundational MediaPipe/LSTM computer vision architecture.
-2.  **[Jetty53/Indian-Sign-Language-Recognition](https://github.com/Jetty53/Indian-Sign-Language-Recognition):** Provided the pre-extracted `.npy` dataset arrays for Indian Sign Language training.
-3.  **[Thabish-Kader/avatar-in-web](https://github.com/Thabish-Kader/avatar-in-web):** Provided the boilerplate React Three Fiber rendering pipeline.
-4.  **[RanitManik/ishaara-react](https://github.com/RanitManik/ishaara-react):** Provided the raw `.fbx` ISL animation files used for retargeting our custom Ready Player Me avatars.
 
 ---
 

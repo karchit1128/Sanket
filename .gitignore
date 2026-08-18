@@ -1,0 +1,42 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+
+# Env vars
+.env
+
+# Models and data
+*.pt
+*.h5
+*.npy
+MP_Data/
+Dataset/
+Jetty_Repo/
+Indian-Sign-Language-Recognition/
+
+# Node
+node_modules/
+.next/
+out/

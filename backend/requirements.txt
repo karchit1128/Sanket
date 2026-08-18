@@ -1,0 +1,8 @@
+﻿fastapi
+uvicorn
+mediapipe
+torch
+numpy
+opencv-python
+groq
+python-dotenv

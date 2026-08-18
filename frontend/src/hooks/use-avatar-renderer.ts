@@ -363,6 +363,26 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
                 config.onLoadingChange?.(false);
 
                 // Process all meshes in the model
+                // Override SIH Logo texture on the Asset 1 mesh (regular Mesh, not SkinnedMesh)
+                const textureLoader = new THREE.TextureLoader();
+                textureLoader.load('/sih_logo.png?v=' + Date.now(), (texture) => {
+                    texture.flipY = false;
+                    texture.colorSpace = THREE.SRGBColorSpace;
+                    gltf.scene.traverse((child) => {
+                        const mat = (child as any).material;
+                        if (mat) {
+                            const applyTex = (m: any) => {
+                                if (m && (m.name === 'Asset 1' || m.name?.includes('Asset'))) {
+                                    m.map = texture;
+                                    m.needsUpdate = true;
+                                }
+                            };
+                            if (Array.isArray(mat)) mat.forEach(applyTex);
+                            else applyTex(mat);
+                        }
+                    });
+                });
+
                 gltf.scene.traverse((child) => {
                     if (child.type === "SkinnedMesh") {
                         const mesh = child as THREE.SkinnedMesh;
@@ -372,6 +392,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
 
                         // Fix material properties for better visibility
                         if (mesh.material) {
+
                             if (Array.isArray(mesh.material)) {
                                 mesh.material.forEach((mat) => {
                                     if (

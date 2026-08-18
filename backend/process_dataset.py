@@ -1,15 +1,15 @@
-﻿import os
+import os
 import cv2
 import numpy as np
 import mediapipe as mp
-
-mp_holistic = mp.solutions.holistic
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
 def extract_keypoints(results):
-    pose = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark]).flatten() if results.pose_landmarks else np.zeros(33*4)
-    face = np.array([[res.x, res.y, res.z] for res in results.face_landmarks.landmark]).flatten() if results.face_landmarks else np.zeros(468*3)
-    lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten() if results.left_hand_landmarks else np.zeros(21*3)
-    rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
+    pose = np.array([[res.x, res.y, res.z, getattr(res, 'visibility', 0.0) if getattr(res, 'visibility', None) is not None else 0.0] for res in results.pose_landmarks]).flatten() if results.pose_landmarks else np.zeros(33*4)
+    face = np.array([[res.x, res.y, res.z] for res in results.face_landmarks]).flatten() if results.face_landmarks else np.zeros(468*3)
+    lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks]).flatten() if results.left_hand_landmarks else np.zeros(21*3)
+    rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
     return np.concatenate([pose, face, lh, rh])
 
 def process_dataset(dataset_dir, output_dir, sequence_length=30):
@@ -18,7 +18,13 @@ def process_dataset(dataset_dir, output_dir, sequence_length=30):
         
     words = [d for d in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, d))]
     
-    with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
+    base_options = python.BaseOptions(model_asset_path=os.path.join(os.path.dirname(__file__), 'holistic_landmarker.task'))
+    options = vision.HolisticLandmarkerOptions(
+        base_options=base_options,
+        running_mode=vision.RunningMode.IMAGE
+    )
+    
+    with vision.HolisticLandmarker.create_from_options(options) as landmarker:
         for word in words:
             word_dir = os.path.join(dataset_dir, word)
             videos = [v for v in os.listdir(word_dir) if v.endswith('.mp4')]
@@ -27,7 +33,6 @@ def process_dataset(dataset_dir, output_dir, sequence_length=30):
                 video_path = os.path.join(word_dir, video)
                 cap = cv2.VideoCapture(video_path)
                 
-                # Create output folder
                 out_seq_dir = os.path.join(output_dir, word, str(seq_num))
                 os.makedirs(out_seq_dir, exist_ok=True)
                 
@@ -41,9 +46,9 @@ def process_dataset(dataset_dir, output_dir, sequence_length=30):
                     if not ret:
                         break
                         
-                    image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    image.flags.writeable = False
-                    results = holistic.process(image)
+                    image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
+                    results = landmarker.detect(mp_image)
                     
                     keypoints = extract_keypoints(results)
                     np.save(os.path.join(out_seq_dir, f"{frame_num}.npy"), keypoints)

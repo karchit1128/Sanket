@@ -1,0 +1,126 @@
+'use client'
+
+import { useState, useRef, useEffect } from 'react';
+import { Camera, Scan } from 'lucide-react';
+
+export default function DeafToHearing() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLcanvasElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [deafTranslation, setDeafTranslation] = useState('');
+
+  useEffect(() => {
+    if (deafTranslation && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(deafTranslation);
+      window.speechSynthesis.speak(utterance);
+      const timeout = setTimeout(() => { setDeafTranslation(''); }, 3000);
+      return () => clearTimeout(timeout);
+    }
+  }, [deafTranslation]);
+
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    };
+  }, []);
+
+  const startCamera = async () => {
+    if (isCameraActive) {
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      if (wsRef.current) wsRef.current.close();
+      setIsCameraActive(false);
+      setDeafTranslation('');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current!.play();
+          setIsCameraActive(true);
+          wsRef.current = new WebSocket('ws://localhost:8000/ws/video');
+          wsRef.current.onopen = () => { sendFrames(); };
+          wsRef.current.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.prediction) setDeafTranslation(data.prediction);
+          };
+        };
+      }
+    } catch (err) {
+      alert('Could not access camera. Please allow permissions.');
+    }
+  };
+
+  const sendFrames = () => {
+    if (!videoRef.current || !canvasRef.current || !wsRef.current) return;
+    if (wsRef.current.readyState !== WebSocket.OPEN) return;
+    const ctx = canvasRef.current.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(videoRef.current, 0, 0, 640, 480);
+      const dataUrl = canvasRef.current.toDataURL('image/jpeg', 0.8);
+      wsRef.current.send(dataUrl);
+    }
+    setTimeout(() => requestAnimationFrame(sendFrames), 100);
+  };
+
+  return (
+    <div className="flex flex-col gap-6 h-full">
+      <div className="flex-1 glass-panel rounded-3xl overflow-hidden relative flex flex-col justify-center items-center">
+        <div className="absolute top-4 left-4 z-10 glass-panel px-4 py-2 rounded-full text-xs font-bold text-blue-400 uppercase tracking-widest flex items-center gap-2">
+          <Camera size={14} /> Deaf to Hearing
+        </div>
+
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{ opacity: isCameraActive ? 1 : 0, zindex: isCameraActive ? 0 : -10 }}
+          className="absolute inset-0 w-full h-full object-cover [scale-x-1]"
+        />
+
+        {isCameraActive ? (
+          <>
+            <div className="absolute inset-0 pointer-events-none border-2 border-blue-500/30 rounded-3xl" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 border-2 border-blue-500/50 rounded-lg pointer-events-none">
+              <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-blue-400" />
+              <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-blue-400" />
+              <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-blue-400" />
+              <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-blue-400" />
+            </div>
+          </>
+        ) : (
+          <div className="text-center flex flex-col items-center gap-4 text-blue-400/60 p-8">
+            <div className="w-20 h-20 rounded-full border-2 border-dashed border-blue-400/30 flex items-center justify-center">
+              <Scan size={32} />
+            </div>
+            <p className="text-sm font-semibold uppercase tracking-widest">Camera Offline</p>
+          </div>
+        )}
+        <canvas ref={canvasRef} width="640" height="480" className="hidden" />
+      </div>
+
+      <div className="h-32 glass-panel rounded-3xl p6 flex items-center justify-between gap-6">
+        <button
+          onClick={startCamera}
+          className={'shrink-0 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 ' + (isCameraActive ? 'bg-red-500 hover:bg-red-600 shadow-[0_0_20px_rgba(239,68,68,0.4)]' : 'bg-blue-600 hover:bg-blue-500 hover:scale-105 shadow-[0_0_20px_rgba(37,99,235,0.3)]')}
+        >
+          {isCameraActive ? <Scan size={28} className="text-white" /> : <Camera size={28} className="text-white" />}
+        </button>
+        <div className="flex-1 flex flex-col justify-center min-w-0">
+          <span className="text-xs text-gray-400 uppercase tracking-widest mb-1 font-semibold">AI Vision Detection</span>
+          <p className="text-lg text-white truncate font-bold tracking-wider">
+            {deafTranslation ? deafTranslation.toUpperCase() : (isCameraActive ? 'Detecting...' : 'Activate AI Vision')}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

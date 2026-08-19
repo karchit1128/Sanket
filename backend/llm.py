@@ -11,18 +11,17 @@ def translate_to_isl_gloss(text: str) -> str:
         
     client = Groq(api_key=api_key)
     
-    prompt = f"You are a strict Indian Sign Language (ISL) translator.\nYour goal is to convert the following English/Hindi sentence into ISL Gloss.\n\nRules for ISL Gloss:\n1. Use Subject-Object-Verb (SOV) structure.\n2. Remove helper verbs (is, am, are, was, were) and articles (a, an, the).\n3. Keep output strictly to upper-case English words separated by spaces.\n4. DO NOT output anything other than the translated gloss.\n\nInput: {text}\nOutput:"
+    prompt = f"You are a strict Indian Sign Language (ISL) translator.\nYour goal is to convert the following English/Hindi sentence into ISL Gloss.\n\nRules for ISL Gloss:\n1. Use Subject-Object-Verb (SOV) structure.\n2. Remove helper verbs (is, am, are, was, were) and articles (a, an, the).\n3. Keep output strictly to upper-case English words separated by spaces.\n4. DO NOT output anything other than the translated gloss. NO explanations, NO intro, NO chain of thought.\n\nInput: {text}\nOutput:"
     
     response = client.chat.completions.create(
         messages=[
-            {"role": "system", "content": "You are a strict ISL Gloss translator. Output only the requested gloss."},
+            {"role": "system", "content": "You are a strict ISL Gloss translator. Output ONLY the translated words. Absolutely no conversational text."},
             {"role": "user", "content": prompt}
         ],
-        model="qwen/qwen3.6-27b",
+        model="llama3-8b-8192",
         temperature=0.0,
     )
     
     import re
     content = response.choices[0].message.content.strip()
-    content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
     return content

@@ -1,69 +1,116 @@
-import os
-import cv2
-import numpy as np
+#!/usr/bin/env python3
+import os, cv2, numpy as np, argparse, shutil
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-def extract_keypoints(results):
-    pose = np.array([[res.x, res.y, res.z, getattr(res, 'visibility', 0.0) if getattr(res, 'visibility', None) is not None else 0.0] for res in results.pose_landmarks]).flatten() if results.pose_landmarks else np.zeros(33*4)
-    face = np.array([[res.x, res.y, res.z] for res in results.face_landmarks]).flatten() if results.face_landmarks else np.zeros(468*3)
-    lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks]).flatten() if results.left_hand_landmarks else np.zeros(21*3)
-    rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
-    return np.concatenate([pose, face, lh, rh])
+SAMPLE_EVERY_N_FRAMES = 3
+MAX_FRAMES = 30
 
-def process_dataset(dataset_dir, output_dir, sequence_length=30):
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+def normalize_keypoints(results):
+    if results.pose_landmarks:
+        nx = results.pose_landmarks[0].x
+        ny = results.pose_landmarks[0].y
+        nz = results.pose_landmarks[0].z
+        # Calculate horizontal proxy (shoulder width)
+        l_sh = results.pose_landmarks[11]
+        r_sh = results.pose_landmarks[12]
+        shoulder_width = np.sqrt((l_sh.x - r_sh.x)**2 + (l_sh.y - r_sh.y)**2)
         
-    words = [d for d in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, d))]
-    
-    base_options = python.BaseOptions(model_asset_path=os.path.join(os.path.dirname(__file__), 'holistic_landmarker.task'))
-    options = vision.HolisticLandmarkerOptions(
-        base_options=base_options,
-        running_mode=vision.RunningMode.IMAGE
+        # Calculate vertical proxy (nose to neck distance)
+        neck_x = (l_sh.x + r_sh.x) / 2
+        neck_y = (l_sh.y + r_sh.y) / 2
+        neck_dist = np.sqrt((nx - neck_x)**2 + (ny - neck_y)**2)
+        
+        # Robust scale factor (immune to turning sideways)
+        scale = max(shoulder_width, neck_dist * 2.5)
+        if scale < 0.01:
+            scale = 1.0
+    else:
+        nx, ny, nz = 0.0, 0.0, 0.0
+        scale = 1.0
+
+    if results.pose_landmarks:
+        pose = np.array([[(r.x-nx)/scale, (r.y-ny)/scale, (r.z-nz)/scale, float(getattr(r,'visibility',0.0) or 0.0)] for r in results.pose_landmarks]).flatten()
+    else:
+        pose = np.zeros(33*4)
+
+    if results.left_hand_landmarks:
+        lh = np.array([[(r.x-nx)/scale, (r.y-ny)/scale, (r.z-nz)/scale] for r in results.left_hand_landmarks]).flatten()
+    else:
+        lh = np.zeros(21*3)
+
+    if results.right_hand_landmarks:
+        rh = np.array([[(r.x-nx)/scale, (r.y-ny)/scale, (r.z-nz)/scale] for r in results.right_hand_landmarks]).flatten()
+    else:
+        rh = np.zeros(21*3)
+
+    kp = np.concatenate([pose, lh, rh])
+    return kp if kp.shape[0] == 258 else np.zeros(258)
+
+def find_classes(dataset_path):
+    VIDEO_EXTS = ('.mp4','.avi','.mov','.mkv','.MOV','.MP4')
+    classes = []
+    for item in sorted(os.listdir(dataset_path)):
+        p = os.path.join(dataset_path, item)
+        if not os.path.isdir(p): continue
+        vids = [f for f in os.listdir(p) if f.endswith(VIDEO_EXTS)]
+        if vids:
+            classes.append((item, p))
+        else:
+            for sub in sorted(os.listdir(p)):
+                sp = os.path.join(p, sub)
+                if os.path.isdir(sp):
+                    svids = [f for f in os.listdir(sp) if f.endswith(VIDEO_EXTS)]
+                    if svids: classes.append((sub, sp))
+    return classes
+
+def process_dataset(dataset_path, output_path):
+    VIDEO_EXTS = ('.mp4','.avi','.mov','.mkv','.MOV','.MP4')
+    classes = find_classes(dataset_path)
+    if not classes:
+        print('No classes found! Check your --dataset path.'); return
+    print(f'Found {len(classes)} classes. Extracting at 10 FPS with nose normalization...')
+    model_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'holistic_landmarker.task')
+    if not os.path.exists(model_path):
+        print(f'ERROR: holistic_landmarker.task not found at {model_path}')
+        print('Run: curl -o backend/holistic_landmarker.task https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task')
+        return
+    landmarker = vision.HolisticLandmarker.create_from_options(
+        vision.HolisticLandmarkerOptions(base_options=python.BaseOptions(model_asset_path=model_path), running_mode=vision.RunningMode.IMAGE)
     )
-    
-    with vision.HolisticLandmarker.create_from_options(options) as landmarker:
-        for word in words:
-            word_dir = os.path.join(dataset_dir, word)
-            videos = [v for v in os.listdir(word_dir) if v.endswith('.mp4')]
-            
-            for seq_num, video in enumerate(videos):
-                video_path = os.path.join(word_dir, video)
-                cap = cv2.VideoCapture(video_path)
-                
-                out_seq_dir = os.path.join(output_dir, word, str(seq_num))
-                os.makedirs(out_seq_dir, exist_ok=True)
-                
-                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                if frame_count < sequence_length:
-                    print(f"Skipping {video_path} (too short: {frame_count} frames)")
-                    continue
-                
-                for frame_num in range(sequence_length):
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                        
-                    image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-                    results = landmarker.detect(mp_image)
-                    
-                    keypoints = extract_keypoints(results)
-                    np.save(os.path.join(out_seq_dir, f"{frame_num}.npy"), keypoints)
-                    
-                cap.release()
-                print(f"Processed: {word} - Video {seq_num}")
+    total = 0
+    for class_name, class_path in classes:
+        out_path = os.path.join(output_path, class_name)
+        os.makedirs(out_path, exist_ok=True)
+        videos = sorted([f for f in os.listdir(class_path) if f.endswith(VIDEO_EXTS)])
+        print(f'  Processing [{class_name}]: {len(videos)} videos')
+        for seq_idx, vf in enumerate(videos):
+            cap = cv2.VideoCapture(os.path.join(class_path, vf))
+            raw_n, window = 0, []
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret: break
+                if raw_n % SAMPLE_EVERY_N_FRAMES == 0:
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    res = landmarker.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
+                    window.append(normalize_keypoints(res))
+                    if len(window) >= MAX_FRAMES: break
+                raw_n += 1
+            cap.release()
+            if not window: continue
+            while len(window) < MAX_FRAMES: window.append(window[-1].copy())
+            for fi, kp in enumerate(window):
+                np.save(os.path.join(out_path, f'{seq_idx}_{fi}.npy'), kp)
+            total += 1
+        print(f'    Done: {len(videos)} sequences saved')
+    zip_base = os.path.join(os.path.dirname(os.path.abspath(output_path)), 'dataset')
+    shutil.make_archive(zip_base, 'zip', output_path)
+    print(f'DONE! {total} total sequences. Upload to Colab: {zip_base}.zip')
 
 if __name__ == '__main__':
-    print("Welcome to the ISL Dataset Processor!")
-    dataset_path = input("Enter the absolute path to your downloaded dataset folder (e.g., C:/Downloads/INCLUDE): ")
-    output_path = os.path.join(os.path.dirname(__file__), 'MP_Data')
-    
-    if os.path.exists(dataset_path):
-        print("Processing dataset... This might take a while depending on the size.")
-        process_dataset(dataset_path, output_path)
-        print(f"Done! All data extracted to {output_path}")
-    else:
-        print("Error: Dataset path not found.")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset', required=True, help='Root folder with class video folders')
+    parser.add_argument('--output', default='dataset', help='Output folder for .npy files')
+    args = parser.parse_args()
+    process_dataset(args.dataset, args.output)

@@ -40,3 +40,6 @@ Indian-Sign-Language-Recognition/
 node_modules/
 .next/
 out/
+
+# AI config
+.agents/

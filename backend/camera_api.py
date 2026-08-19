@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from vision import ASLDetector
 import cv2
 import numpy as np
@@ -22,9 +22,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                 
                 if img is not None:
-                    prediction = detector.process_frame(img)
-                    if prediction:
-                        await websocket.send_json({"prediction": prediction})
+                    result = detector.process_frame(img)
+                    if result:
+                        await websocket.send_json(result)
                         
     except WebSocketDisconnect:
         print("Client disconnected")

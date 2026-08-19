@@ -5,47 +5,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import time
-
-def normalize_keypoints(results):
-    if results.pose_landmarks:
-        nx = results.pose_landmarks[0].x
-        ny = results.pose_landmarks[0].y
-        nz = results.pose_landmarks[0].z
-        # Calculate horizontal proxy (shoulder width)
-        l_sh = results.pose_landmarks[11]
-        r_sh = results.pose_landmarks[12]
-        shoulder_width = np.sqrt((l_sh.x - r_sh.x)**2 + (l_sh.y - r_sh.y)**2)
-        
-        # Calculate vertical proxy (nose to neck distance)
-        neck_x = (l_sh.x + r_sh.x) / 2
-        neck_y = (l_sh.y + r_sh.y) / 2
-        neck_dist = np.sqrt((nx - neck_x)**2 + (ny - neck_y)**2)
-        
-        # Robust scale factor (immune to turning sideways)
-        scale = max(shoulder_width, neck_dist * 2.5)
-        if scale < 0.01:
-            scale = 1.0
-    else:
-        nx, ny, nz = 0.0, 0.0, 0.0
-        scale = 1.0
-
-    if results.pose_landmarks:
-        pose = np.array([[(r.x-nx)/scale, (r.y-ny)/scale, (r.z-nz)/scale, float(getattr(r,'visibility',0.0) or 0.0)] for r in results.pose_landmarks]).flatten()
-    else:
-        pose = np.zeros(33*4)
-
-    if results.left_hand_landmarks:
-        lh = np.array([[(r.x-nx)/scale, (r.y-ny)/scale, (r.z-nz)/scale] for r in results.left_hand_landmarks]).flatten()
-    else:
-        lh = np.zeros(21*3)
-
-    if results.right_hand_landmarks:
-        rh = np.array([[(r.x-nx)/scale, (r.y-ny)/scale, (r.z-nz)/scale] for r in results.right_hand_landmarks]).flatten()
-    else:
-        rh = np.zeros(21*3)
-
-    kp = np.concatenate([pose, lh, rh])
-    return kp if kp.shape[0] == 258 else np.zeros(258)
+from feature_extraction import process_video
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     for hand_landmarks in [detection_result.left_hand_landmarks, detection_result.right_hand_landmarks]:
@@ -104,6 +64,7 @@ for action in selected_actions:
     cv2.waitKey(2000)
     for sequence in range(no_sequences):
         frame_num = 0
+        window = []
         while frame_num < sequence_length:
             ret, frame = cap.read()
             if not ret: continue
@@ -131,10 +92,7 @@ for action in selected_actions:
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
             results = landmarker.detect(mp_image)
             
-            # Export keypoints
-            keypoints = normalize_keypoints(results)
-            npy_path = os.path.join(DATA_PATH, action, f'{sequence}_{frame_num}.npy')
-            np.save(npy_path, keypoints)
+            window.append(results)
             
             # Draw on display frame
             draw_landmarks_on_image(frame, results)
@@ -147,6 +105,14 @@ for action in selected_actions:
                 exit()
             
             frame_num += 1
+            
+        # Process and save the collected sequence
+        features = process_video(window, target_frames=30)
+        if features is not None:
+            npy_path = os.path.join(DATA_PATH, action, f'{sequence}.npy')
+            np.save(npy_path, features)
+        else:
+            print(f"Skipping sequence {sequence} (No hands detected)")
 
 cap.release()
 cv2.destroyAllWindows()

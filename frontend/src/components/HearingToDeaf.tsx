@@ -82,12 +82,22 @@ export default function HearingToDeaf() {
         </div>
         <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
         
-        {/* Gloss Output Overlay */}
-        {islGloss && (
+        {/* Transcript & Gloss Output Overlay */}
+        {(transcript || islGloss) && (
           <div className="absolute bottom-6 w-full px-6 flex justify-center z-10 transition-all duration-500">
             <div className="glass-panel bg-black/60 px-8 py-4 rounded-2xl flex flex-col items-center">
-              <span className="text-[10px] text-emerald-400 uppercase tracking-widest mb-1">Translating to ISL Gloss</span>
-              <span className="text-2xl font-bold text-white tracking-widest">{islGloss}</span>
+              {transcript && (
+                <>
+                  <span className="text-[10px] text-blue-400 uppercase tracking-widest mb-1">Original Text</span>
+                  <span className="text-lg text-gray-300 mb-3 text-center max-w-lg font-medium">{transcript}</span>
+                </>
+              )}
+              {islGloss && (
+                <>
+                  <span className="text-[10px] text-emerald-400 uppercase tracking-widest mb-1">ISL Gloss (Signed by Avatar)</span>
+                  <span className="text-2xl font-bold text-white tracking-widest text-center">{islGloss}</span>
+                </>
+              )}
             </div>
           </div>
         )}

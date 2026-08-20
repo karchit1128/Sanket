@@ -223,37 +223,86 @@ document.addEventListener('DOMContentLoaded', () => {
         chartInstance.update('none'); // update without animations for super fast rendering
     }
 
-    // --- Toggle Camera Feed (Client Request) ---
-    function toggleWebcam(forceAction = null) {
-        let action = '';
-        if (forceAction) {
-            action = forceAction;
-        } else {
-            const isOffline = elements.cameraStatusText.textContent.includes('Offline');
-            action = isOffline ? 'start' : 'stop';
-        }
+    // --- Camera State ---
+    let cameraStream = null;
+    let frameInterval = null;
+    const videoEl = document.createElement('video');
+    videoEl.autoplay = true;
+    videoEl.playsInline = true;
+    videoEl.muted = true;
+    const canvasEl = document.createElement('canvas');
+    canvasEl.width = 320;
+    canvasEl.height = 240;
 
-        fetch('/toggle_camera', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: action })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'started') {
-                setCameraUIActive(true);
-            } else {
-                setCameraUIActive(false);
-            }
-        })
-        .catch(err => console.error("Error setting camera state:", err));
+    // --- Toggle Camera Feed (Browser WebRTC) ---
+    function toggleWebcam(forceAction = null) {
+        const isOffline = elements.cameraStatusText.textContent.includes('Offline');
+        const shouldStart = forceAction === 'start' || (!forceAction && isOffline);
+
+        if (shouldStart) {
+            navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' } })
+                .then(stream => {
+                    cameraStream = stream;
+                    videoEl.srcObject = stream;
+                    videoEl.onloadedmetadata = () => {
+                        videoEl.play();
+                        setCameraUIActive(true);
+                        startFrameSending();
+                    };
+                })
+                .catch(err => {
+                    console.error("Camera access denied:", err);
+                    alert("Camera access denied. Please allow camera permissions in your browser.");
+                });
+        } else {
+            stopCamera();
+        }
     }
+
+    function stopCamera() {
+        if (frameInterval) { clearInterval(frameInterval); frameInterval = null; }
+        if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+        videoEl.srcObject = null;
+        setCameraUIActive(false);
+        stopPolling();
+        resetTelemetryUI();
+    }
+
+    function startFrameSending() {
+        if (frameInterval) clearInterval(frameInterval);
+
+        // Draw browser video frames to canvas and POST to /process_frame every 100ms
+        frameInterval = setInterval(() => {
+            if (!cameraStream || !videoEl.readyState >= 2) return;
+            const ctx = canvasEl.getContext('2d');
+            ctx.save();
+            ctx.scale(-1, 1); // mirror
+            ctx.drawImage(videoEl, -canvasEl.width, 0, canvasEl.width, canvasEl.height);
+            ctx.restore();
+
+            // Show the canvas in the webcamImage area
+            elements.webcamImage.src = canvasEl.toDataURL('image/jpeg', 0.7);
+
+            // Send JPEG to server for gesture detection
+            canvasEl.toBlob(blob => {
+                if (!blob) return;
+                fetch('/process_frame', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'image/jpeg' },
+                    body: blob
+                })
+                .then(res => res.json())
+                .then(data => updateTelemetryUI(data))
+                .catch(err => console.error("Frame send error:", err));
+            }, 'image/jpeg', 0.7);
+        }, 100);
+    }
+
 
     // --- Set UI elements to active camera state ---
     function setCameraUIActive(isActive) {
         if (isActive) {
-            // Update Image source to MJPEG stream
-            elements.webcamImage.src = '/video_feed?t=' + new Date().getTime();
+            // Show webcamImage (src will be set by canvas loop)
             elements.webcamImage.classList.remove('d-none');
             elements.scanningLine.classList.remove('d-none');
             elements.cameraPlaceholder.classList.add('d-none');
@@ -267,11 +316,8 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.screenshotBtn.disabled = false;
             elements.streamTypeLabel.textContent = "DETECTION LIVE";
             elements.streamTypeLabel.className = "badge bg-magenta-glow py-1 px-2 rounded-pill font-monospace";
-            
-            // Start Polling Telemetry Data
-            startPolling();
         } else {
-            // Reset image source completely to stop requesting stream
+            // Reset image source
             elements.webcamImage.src = '';
             elements.webcamImage.removeAttribute('src');
             elements.webcamImage.classList.add('d-none');
@@ -287,12 +333,9 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.screenshotBtn.disabled = true;
             elements.streamTypeLabel.textContent = "RAW FEED";
             elements.streamTypeLabel.className = "badge bg-secondary-glow py-1 px-2 rounded-pill font-monospace";
-            
-            // Stop Polling Telemetry Data
-            stopPolling();
-            resetTelemetryUI();
         }
     }
+
 
     // --- Reset telemetry cards when camera offline ---
     function resetTelemetryUI() {
@@ -336,8 +379,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Update Telemetry UI elements based on polled data ---
     function updateTelemetryUI(data) {
-        // 1. Update live performance markers
-        elements.liveFPS.textContent = data.fps;
+        // 1. Update live performance markers (10 fps from 100ms interval)
+        elements.liveFPS.textContent = cameraStream ? "10.0" : "0.0";
+
         
         // 2. Active gesture classifications
         const gesture = data.has_hand ? data.gesture : "No Hand";
@@ -508,17 +552,14 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.galleryContainer.innerHTML = '';
         });
         
-        // Clear log
+        // Clear log - restart browser camera to reset stabilizer
         elements.clearHistoryBtn.addEventListener('click', () => {
-            fetch('/toggle_camera', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'stop' })
-            }).then(() => {
-                // Restart to clean stabilizer memory
-                toggleWebcam('start');
-            });
+            if (cameraStream) {
+                stopCamera();
+                setTimeout(() => toggleWebcam('start'), 200);
+            }
         });
+
 
         // Speech selector switches
         elements.btnVoiceBrowser.addEventListener('click', () => setVoiceMode('browser'));

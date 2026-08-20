@@ -33,12 +33,16 @@ class ASLDetector:
         self.current_preds = []
         self.result_timer = 0
 
-        base_options = python.BaseOptions(model_asset_path=os.path.join(os.path.dirname(__file__), 'holistic_landmarker.task'))
-        options = vision.HolisticLandmarkerOptions(
-            base_options=base_options,
-            running_mode=vision.RunningMode.IMAGE
-        )
-        self.landmarker = vision.HolisticLandmarker.create_from_options(options)
+        try:
+            base_options = python.BaseOptions(model_asset_path=os.path.join(os.path.dirname(__file__), 'holistic_landmarker.task'))
+            options = vision.HolisticLandmarkerOptions(
+                base_options=base_options,
+                running_mode=vision.RunningMode.IMAGE
+            )
+            self.landmarker = vision.HolisticLandmarker.create_from_options(options)
+        except Exception as e:
+            print(f"WARNING: Could not initialize MediaPipe HolisticLandmarker on server: {e}")
+            self.landmarker = None
 
         model_path = os.path.join(os.path.dirname(__file__), 'action.pt')
         try:

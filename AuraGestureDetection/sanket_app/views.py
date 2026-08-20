@@ -54,11 +54,12 @@ class GestureEngine:
     def __init__(self):
         self.detector = GestureDetector()
         self.stabilizer = GestureStabilizer(
-            window_size=6,
-            min_confidence=0.60,
-            lock_consecutive_frames=3,
-            cooldown_seconds=0.3
+            window_size=4,
+            min_confidence=0.55,
+            lock_consecutive_frames=2,
+            cooldown_seconds=0.2
         )
+
         self.history = []
         self.lock = threading.Lock()
         self.landmarker = None

@@ -81,11 +81,12 @@
                             </button>
                         </div>
                         
-                        <!-- Real-time Video Stream Image -->
-                        <img src="" class="webcam-feed d-none" id="webcamImage" alt="Live Gesture Stream Feed" crossorigin="anonymous">
+                        <!-- Real-time Video Stream Canvas (browser camera + landmark overlay) -->
+                        <canvas id="webcamImage" class="webcam-feed d-none" style="max-width:100%;border-radius:12px;"></canvas>
                         
                         <!-- Visual scanning line overlay -->
                         <div class="scan-line d-none" id="scanningLine"></div>
+
                     </div>
 
                     <!-- Visual Control Actions -->

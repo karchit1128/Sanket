@@ -226,13 +226,74 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Camera State ---
     let cameraStream = null;
     let frameInterval = null;
+    let lastLandmarks = [];   // latest landmarks from server response
+
+    const HAND_CONNECTIONS = [
+        [0,1],[1,2],[2,3],[3,4],
+        [0,5],[5,6],[6,7],[7,8],
+        [5,9],[9,10],[10,11],[11,12],
+        [9,13],[13,14],[14,15],[15,16],
+        [13,17],[0,17],[17,18],[18,19],[19,20]
+    ];
+
     const videoEl = document.createElement('video');
     videoEl.autoplay = true;
     videoEl.playsInline = true;
     videoEl.muted = true;
-    const canvasEl = document.createElement('canvas');
-    canvasEl.width = 320;
-    canvasEl.height = 240;
+
+    // Use the actual canvas in the DOM for display
+    const displayCanvas = elements.webcamImage;  // this is now a <canvas>
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = 320;
+    offscreenCanvas.height = 240;
+
+    function drawFrame(landmarks, gestureLabel) {
+        if (!displayCanvas) return;
+        const dctx = displayCanvas.getContext('2d');
+        const W = displayCanvas.width;
+        const H = displayCanvas.height;
+
+        // Draw mirrored video frame
+        dctx.save();
+        dctx.scale(-1, 1);
+        dctx.drawImage(videoEl, -W, 0, W, H);
+        dctx.restore();
+
+        if (landmarks && landmarks.length === 21) {
+            const pts = landmarks.map(lm => ({
+                x: (1 - lm.x) * W,   // mirror x to match mirrored video
+                y: lm.y * H
+            }));
+
+            // Draw skeleton connections
+            dctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            dctx.lineWidth = 2;
+            for (const [a, b] of HAND_CONNECTIONS) {
+                dctx.beginPath();
+                dctx.moveTo(pts[a].x, pts[a].y);
+                dctx.lineTo(pts[b].x, pts[b].y);
+                dctx.stroke();
+            }
+
+            // Draw landmark dots
+            for (const pt of pts) {
+                dctx.beginPath();
+                dctx.arc(pt.x, pt.y, 4, 0, 2 * Math.PI);
+                dctx.fillStyle = '#f0f040';
+                dctx.fill();
+            }
+
+            // Draw gesture label on canvas if detected
+            if (gestureLabel && gestureLabel !== 'No Hand' && gestureLabel !== 'Unknown') {
+                dctx.font = 'bold 18px Outfit, Inter, sans-serif';
+                dctx.fillStyle = '#ff3cac';
+                dctx.shadowColor = '#ff3cac';
+                dctx.shadowBlur = 8;
+                dctx.fillText(gestureLabel, 14, 34);
+                dctx.shadowBlur = 0;
+            }
+        }
+    }
 
     // --- Toggle Camera Feed (Browser WebRTC) ---
     function toggleWebcam(forceAction = null) {
@@ -246,13 +307,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     videoEl.srcObject = stream;
                     videoEl.onloadedmetadata = () => {
                         videoEl.play();
+                        // Size the display canvas to match video
+                        displayCanvas.width = videoEl.videoWidth || 320;
+                        displayCanvas.height = videoEl.videoHeight || 240;
                         setCameraUIActive(true);
                         startFrameSending();
                     };
                 })
                 .catch(err => {
                     console.error("Camera access denied:", err);
-                    alert("Camera access denied. Please allow camera permissions in your browser.");
+                    alert("Camera access denied. Please allow camera permissions in your browser and reload.");
                 });
         } else {
             stopCamera();
@@ -263,28 +327,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (frameInterval) { clearInterval(frameInterval); frameInterval = null; }
         if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
         videoEl.srcObject = null;
+        lastLandmarks = [];
         setCameraUIActive(false);
-        stopPolling();
         resetTelemetryUI();
     }
 
     function startFrameSending() {
         if (frameInterval) clearInterval(frameInterval);
 
-        // Draw browser video frames to canvas and POST to /process_frame every 100ms
         frameInterval = setInterval(() => {
-            if (!cameraStream || !videoEl.readyState >= 2) return;
-            const ctx = canvasEl.getContext('2d');
-            ctx.save();
-            ctx.scale(-1, 1); // mirror
-            ctx.drawImage(videoEl, -canvasEl.width, 0, canvasEl.width, canvasEl.height);
-            ctx.restore();
+            if (!cameraStream || videoEl.readyState < 2) return;
 
-            // Show the canvas in the webcamImage area
-            elements.webcamImage.src = canvasEl.toDataURL('image/jpeg', 0.7);
+            const W = offscreenCanvas.width;
+            const H = offscreenCanvas.height;
+            const octx = offscreenCanvas.getContext('2d');
 
-            // Send JPEG to server for gesture detection
-            canvasEl.toBlob(blob => {
+            // Draw to offscreen canvas for sending (mirrored)
+            octx.save();
+            octx.scale(-1, 1);
+            octx.drawImage(videoEl, -W, 0, W, H);
+            octx.restore();
+
+            // Draw current frame + last known landmarks to display canvas
+            drawFrame(lastLandmarks, elements.activeGestureText.textContent);
+
+            // Send frame blob to server for detection
+            offscreenCanvas.toBlob(blob => {
                 if (!blob) return;
                 fetch('/process_frame', {
                     method: 'POST',
@@ -292,11 +360,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: blob
                 })
                 .then(res => res.json())
-                .then(data => updateTelemetryUI(data))
+                .then(data => {
+                    lastLandmarks = data.landmarks || [];
+                    updateTelemetryUI(data);
+                })
                 .catch(err => console.error("Frame send error:", err));
-            }, 'image/jpeg', 0.7);
+            }, 'image/jpeg', 0.8);
         }, 100);
     }
+
 
 
     // --- Set UI elements to active camera state ---
@@ -317,10 +389,13 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.streamTypeLabel.textContent = "DETECTION LIVE";
             elements.streamTypeLabel.className = "badge bg-magenta-glow py-1 px-2 rounded-pill font-monospace";
         } else {
-            // Reset image source
-            elements.webcamImage.src = '';
-            elements.webcamImage.removeAttribute('src');
+            // Clear and hide canvas
+            if (elements.webcamImage.getContext) {
+                const ctx = elements.webcamImage.getContext('2d');
+                ctx.clearRect(0, 0, elements.webcamImage.width, elements.webcamImage.height);
+            }
             elements.webcamImage.classList.add('d-none');
+
             elements.scanningLine.classList.add('d-none');
             elements.cameraPlaceholder.classList.remove('d-none');
             

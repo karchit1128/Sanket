@@ -56,7 +56,8 @@ export default function HearingToDeaf() {
   const translateToISL = async (text: string) => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/translate", {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const res = await fetch(`${backendUrl}/translate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),

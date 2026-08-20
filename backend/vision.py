@@ -60,6 +60,9 @@ class ASLDetector:
 
     def process_frame(self, image_np):
         self.frame_counter += 1
+        if self.landmarker is None:
+            return {"status": "Idle", "indicator": "red", "prediction": None, "landmarks": [], "signing_frame_count": 0, "prediction_fired": False}
+
         # Horizontally flip the incoming selfie-camera frame to un-mirror it
         image_np = cv2.flip(image_np, 1)
         image_rgb = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)

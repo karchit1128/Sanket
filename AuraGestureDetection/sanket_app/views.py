@@ -92,9 +92,45 @@ class GestureEngine:
             except Exception as e2:
                 logger.error(f"All MediaPipe init failed: {e2}")
 
+    def process_landmarks(self, landmarks_list, handedness="Right"):
+        """
+        Process landmarks directly received from browser MediaPipe JS.
+        landmarks_list: list of dicts [{'x': float, 'y': float, 'z': float}] (length 21) or None
+        """
+        if not landmarks_list or len(landmarks_list) != 21:
+            raw_gesture = "No Hand"
+            raw_confidence = 0.0
+            hand_present = False
+            landmarks_out = []
+        else:
+            hand_present = True
+            raw_landmarks = [LandmarkWrapper(lm.get('x', 0.0), lm.get('y', 0.0), lm.get('z', 0.0)) for lm in landmarks_list]
+            hand_landmarks = HandLandmarksWrapper(raw_landmarks)
+            landmarks_out = [{"x": lm.x, "y": lm.y} for lm in raw_landmarks]
+            raw_gesture, raw_confidence = self.detector.detect_gesture(hand_landmarks, handedness)
+
+        with self.lock:
+            locked_gest, smoothed_conf, was_updated = self.stabilizer.add_prediction(raw_gesture, raw_confidence)
+
+            if was_updated and locked_gest not in ["No Hand", "Unknown"]:
+                self.history.insert(0, {
+                    "gesture": locked_gest,
+                    "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
+                })
+                self.history = self.history[:20]
+
+        return {
+            "gesture": locked_gest,
+            "confidence": round(smoothed_conf * 100, 1),
+            "has_hand": hand_present,
+            "landmarks": landmarks_out,
+            "history": self.history[:10],
+            "was_updated": was_updated
+        }
+
     def process_frame(self, frame_bytes):
         """
-        Process a JPEG frame (bytes) received from the browser.
+        Process a JPEG frame (bytes) received from the browser as fallback.
         Returns dict with gesture, confidence, landmarks, has_hand.
         """
         import base64
@@ -204,17 +240,30 @@ def index(request):
 @csrf_exempt
 def process_frame(request):
     """
-    Receives a single JPEG frame from the browser (as raw POST body or base64).
-    Returns gesture detection JSON.
+    Receives either:
+    1. JSON payload with `landmarks` detected by browser MediaPipe JS
+    2. Raw JPEG image bytes / base64
     """
     if request.method != 'POST':
         return JsonResponse({"error": "POST only"}, status=405)
+
+    content_type = request.headers.get('Content-Type', '')
+
+    if 'application/json' in content_type:
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+            landmarks = data.get('landmarks')
+            handedness = data.get('handedness', 'Right')
+            result = get_engine().process_landmarks(landmarks, handedness)
+            return JsonResponse(result)
+        except Exception as e:
+            logger.error(f"JSON parsing error in process_frame: {e}")
+            return JsonResponse({"error": str(e)}, status=400)
 
     body = request.body
     if not body:
         return JsonResponse({"error": "Empty body"}, status=400)
 
-    # Handle base64-encoded data URI from browser canvas
     if body.startswith(b'data:image'):
         import base64
         try:
@@ -225,6 +274,7 @@ def process_frame(request):
 
     result = get_engine().process_frame(body)
     return JsonResponse(result)
+
 
 
 @csrf_exempt

@@ -226,7 +226,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Camera State ---
     let cameraStream = null;
     let frameInterval = null;
-    let lastLandmarks = [];   // latest landmarks from server response
+    let lastLandmarks = [];
+    let browserHandLandmarker = null;   // MediaPipe JS landmarker
+    let mpReady = false;
 
     const HAND_CONNECTIONS = [
         [0,1],[1,2],[2,3],[3,4],
@@ -241,19 +243,55 @@ document.addEventListener('DOMContentLoaded', () => {
     videoEl.playsInline = true;
     videoEl.muted = true;
 
-    // Use the actual canvas in the DOM for display
-    const displayCanvas = elements.webcamImage;  // this is now a <canvas>
+    const displayCanvas = elements.webcamImage;   // <canvas> in DOM
     const offscreenCanvas = document.createElement('canvas');
     offscreenCanvas.width = 320;
     offscreenCanvas.height = 240;
 
+    // --- Initialize MediaPipe HandLandmarker in Browser ---
+    async function initMediaPipe() {
+        console.log('[MediaPipe] Initializing Browser HandLandmarker...');
+        try {
+            let HandLandmarker, FilesetResolver;
+            if (window.FilesetResolver && window.HandLandmarker) {
+                HandLandmarker = window.HandLandmarker;
+                FilesetResolver = window.FilesetResolver;
+            } else {
+                const visionModule = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm');
+                HandLandmarker = visionModule.HandLandmarker;
+                FilesetResolver = visionModule.FilesetResolver;
+            }
+
+            const vision = await FilesetResolver.forVisionTasks(
+                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+            );
+            browserHandLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+                    delegate: 'GPU'
+                },
+                runningMode: 'VIDEO',
+                numHands: 1,
+                minHandDetectionConfidence: 0.5,
+                minHandPresenceConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            mpReady = true;
+            console.log('[MediaPipe] ✅ Browser HandLandmarker is READY');
+        } catch (e) {
+            console.error('[MediaPipe] ❌ Initialization error:', e);
+            mpReady = false;
+        }
+    }
+
+
+    // --- Draw video + landmark skeleton onto display canvas ---
     function drawFrame(landmarks, gestureLabel) {
         if (!displayCanvas) return;
         const dctx = displayCanvas.getContext('2d');
         const W = displayCanvas.width;
         const H = displayCanvas.height;
 
-        // Draw mirrored video frame
         dctx.save();
         dctx.scale(-1, 1);
         dctx.drawImage(videoEl, -W, 0, W, H);
@@ -261,12 +299,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (landmarks && landmarks.length === 21) {
             const pts = landmarks.map(lm => ({
-                x: (1 - lm.x) * W,   // mirror x to match mirrored video
+                x: (1 - lm.x) * W,
                 y: lm.y * H
             }));
 
-            // Draw skeleton connections
-            dctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            dctx.strokeStyle = 'rgba(255,255,255,0.85)';
             dctx.lineWidth = 2;
             for (const [a, b] of HAND_CONNECTIONS) {
                 dctx.beginPath();
@@ -275,31 +312,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 dctx.stroke();
             }
 
-            // Draw landmark dots
             for (const pt of pts) {
                 dctx.beginPath();
-                dctx.arc(pt.x, pt.y, 4, 0, 2 * Math.PI);
+                dctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
                 dctx.fillStyle = '#f0f040';
                 dctx.fill();
             }
 
-            // Draw gesture label on canvas if detected
             if (gestureLabel && gestureLabel !== 'No Hand' && gestureLabel !== 'Unknown') {
-                dctx.font = 'bold 18px Outfit, Inter, sans-serif';
+                dctx.font = 'bold 18px Outfit,Inter,sans-serif';
                 dctx.fillStyle = '#ff3cac';
                 dctx.shadowColor = '#ff3cac';
-                dctx.shadowBlur = 8;
+                dctx.shadowBlur = 10;
                 dctx.fillText(gestureLabel, 14, 34);
                 dctx.shadowBlur = 0;
             }
         }
     }
 
-    // --- Toggle Camera Feed (Browser WebRTC) ---
+    // --- Toggle Camera ---
     function toggleWebcam(forceAction = null) {
         const isOffline = elements.cameraStatusText.textContent.includes('Offline');
         const shouldStart = forceAction === 'start' || (!forceAction && isOffline);
-
         if (shouldStart) {
             navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240, facingMode: 'user' } })
                 .then(stream => {
@@ -307,16 +341,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     videoEl.srcObject = stream;
                     videoEl.onloadedmetadata = () => {
                         videoEl.play();
-                        // Size the display canvas to match video
                         displayCanvas.width = videoEl.videoWidth || 320;
                         displayCanvas.height = videoEl.videoHeight || 240;
                         setCameraUIActive(true);
-                        startFrameSending();
+                        startDetectionLoop();
                     };
                 })
                 .catch(err => {
-                    console.error("Camera access denied:", err);
-                    alert("Camera access denied. Please allow camera permissions in your browser and reload.");
+                    console.error('Camera denied:', err);
+                    alert('Camera access denied. Please allow camera permissions and reload.');
                 });
         } else {
             stopCamera();
@@ -324,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function stopCamera() {
-        if (frameInterval) { clearInterval(frameInterval); frameInterval = null; }
+        if (frameInterval) { cancelAnimationFrame(frameInterval); frameInterval = null; }
         if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
         videoEl.srcObject = null;
         lastLandmarks = [];
@@ -332,42 +365,59 @@ document.addEventListener('DOMContentLoaded', () => {
         resetTelemetryUI();
     }
 
-    function startFrameSending() {
-        if (frameInterval) clearInterval(frameInterval);
+    // --- Main Detection Loop (requestAnimationFrame based) ---
+    let lastSendTime = 0;
+    function startDetectionLoop() {
+        function loop(timestamp) {
+            if (!cameraStream || videoEl.readyState < 2) {
+                frameInterval = requestAnimationFrame(loop);
+                return;
+            }
 
-        frameInterval = setInterval(() => {
-            if (!cameraStream || videoEl.readyState < 2) return;
+            // Detect hands at 30fps via rAF, but only POST to server at ~8fps
+            let landmarks = [];
 
-            const W = offscreenCanvas.width;
-            const H = offscreenCanvas.height;
-            const octx = offscreenCanvas.getContext('2d');
+            if (mpReady && browserHandLandmarker) {
+                // Browser-side MediaPipe detection
+                try {
+                    const result = browserHandLandmarker.detectForVideo(videoEl, timestamp);
+                    if (result && result.landmarks && result.landmarks.length > 0) {
+                        landmarks = result.landmarks[0].map(lm => ({ x: lm.x, y: lm.y }));
+                        lastLandmarks = landmarks;
+                    } else {
+                        lastLandmarks = [];
+                    }
+                } catch(e) {
+                    // ignore frame errors
+                }
+            }
 
-            // Draw to offscreen canvas for sending (mirrored)
-            octx.save();
-            octx.scale(-1, 1);
-            octx.drawImage(videoEl, -W, 0, W, H);
-            octx.restore();
-
-            // Draw current frame + last known landmarks to display canvas
+            // Draw to display at full frame rate
             drawFrame(lastLandmarks, elements.activeGestureText.textContent);
 
-            // Send frame blob to server for detection
-            offscreenCanvas.toBlob(blob => {
-                if (!blob) return;
+            // Send landmarks to server for gesture classification at ~8fps
+            if (timestamp - lastSendTime > 125) {
+                lastSendTime = timestamp;
+                const landmarksToSend = lastLandmarks.length > 0 ? lastLandmarks : null;
                 fetch('/process_frame', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'image/jpeg' },
-                    body: blob
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ landmarks: landmarksToSend, has_hand: landmarksToSend !== null })
                 })
                 .then(res => res.json())
-                .then(data => {
-                    lastLandmarks = data.landmarks || [];
-                    updateTelemetryUI(data);
-                })
-                .catch(err => console.error("Frame send error:", err));
-            }, 'image/jpeg', 0.8);
-        }, 100);
+                .then(data => updateTelemetryUI(data))
+                .catch(() => {});
+            }
+
+            frameInterval = requestAnimationFrame(loop);
+        }
+        frameInterval = requestAnimationFrame(loop);
     }
+
+    // Init MediaPipe as soon as possible
+    initMediaPipe();
+
+
 
 
 

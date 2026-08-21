@@ -106,13 +106,44 @@ def _rule_based_isl_converter(text: str) -> str:
     return " ".join(result_tokens)
 
 
+def _call_gemini_api(api_key: str, prompt: str) -> str:
+
+    """Call Google Gemini REST API directly with automatic model fallback."""
+    models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro"]
+    
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "temperature": 0.0,
+                "maxOutputTokens": 60
+            }
+        }
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=4.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                cleaned = re.sub(r'["\']', '', text).strip().upper()
+                if cleaned:
+                    return cleaned
+        except Exception as e:
+            print(f"[Gemini Fallback] Model {model} attempt failed: {e}")
+            continue
+    return ""
+
+
 def translate_to_isl_gloss(text: str) -> str:
     """
-    Multi-layered robust ISL Translation Pipeline:
-    Layer 1: Exact Pitch Demo Dictionary Match (0ms latency, 100% accuracy)
-    Layer 2: In-Memory Translation Cache (Instant)
-    Layer 3: Multi-Key Groq LLaMA-3.1 Cloud LLM with automatic key rotation
-    Layer 4: Fallback Rule-Based ISL SOV Grammar Engine (guarantees zero crashes)
+    Multi-Layered Fail-Safe Translation Architecture:
+    LAYER 0: Pitch Demo Fast-Path & In-Memory Cache (0ms latency)
+    LAYER 1: Primary LLM - Groq LLaMA-3.1-8B (Ultra-fast cloud inference)
+    LAYER 2: Supportive Secondary LLM - Google Gemini (Called if Groq fails / rate-limits)
+    LAYER 3: Offline Linguistic Rule-based SOV Grammar Engine (100% Infallible Safety)
     """
     if not text or not text.strip():
         return ""
@@ -120,32 +151,17 @@ def translate_to_isl_gloss(text: str) -> str:
     normalized = _clean_text(text)
 
     # -------------------------------------------------------------
-    # LAYER 1: Pitch Dictionary Match
+    # LAYER 0: Pitch Fast-Path Dictionary & Cache
     # -------------------------------------------------------------
     if normalized in PITCH_DICTIONARY:
         return PITCH_DICTIONARY[normalized]
 
-    # Without question mark
     no_q = normalized.rstrip('?')
     if no_q in PITCH_DICTIONARY:
         return PITCH_DICTIONARY[no_q]
 
-    # -------------------------------------------------------------
-    # LAYER 2: In-Memory Cache
-    # -------------------------------------------------------------
     if normalized in _TRANSLATION_CACHE:
         return _TRANSLATION_CACHE[normalized]
-
-    # -------------------------------------------------------------
-    # LAYER 3: Groq LLM with Multi-Key Safety Fallback
-    # -------------------------------------------------------------
-    candidate_keys = [
-        os.getenv("GROQ_API_KEY"),
-        os.getenv("BACKUP_GROQ_API_KEY"),
-        os.getenv("SECONDARY_GROQ_API_KEY")
-    ]
-    # Filter valid keys
-    api_keys = [k.strip() for k in candidate_keys if k and k.strip().startswith("gsk_")]
 
     prompt = (
         f"You are a strict Indian Sign Language (ISL) translator.\n"
@@ -159,9 +175,18 @@ def translate_to_isl_gloss(text: str) -> str:
         f"Output:"
     )
 
-    for key in api_keys:
+    # -------------------------------------------------------------
+    # LAYER 1: PRIMARY LLM (Groq LLaMA-3.1)
+    # -------------------------------------------------------------
+    candidate_groq_keys = [
+        os.getenv("GROQ_API_KEY"),
+        os.getenv("BACKUP_GROQ_API_KEY")
+    ]
+    groq_keys = [k.strip() for k in candidate_groq_keys if k and k.strip().startswith("gsk_")]
+
+    for key in groq_keys:
         try:
-            client = Groq(api_key=key, timeout=4.0)
+            client = Groq(api_key=key, timeout=3.5)
             response = client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": "You are a strict ISL Gloss translator. Output ONLY uppercase words separated by single spaces."},
@@ -172,20 +197,33 @@ def translate_to_isl_gloss(text: str) -> str:
                 max_tokens=60,
             )
             content = response.choices[0].message.content.strip()
-            # Clean any stray formatting or quotes
             content = re.sub(r'["\']', '', content).strip().upper()
             if content:
+                print("[LLM Router] Translated successfully via Groq (Primary)")
                 _TRANSLATION_CACHE[normalized] = content
                 return content
         except Exception as e:
-            print(f"[LLM Layer Warning] Key attempt failed ({e}), trying next fallback...")
-            continue
+            print(f"[Groq Primary Layer Failed] ({e}) -> Switching to Supportive Gemini...")
+            break
 
     # -------------------------------------------------------------
-    # LAYER 4: Infallible Linguistic Rule-based ISL Grammar Fallback
+    # LAYER 2: SUPPORTIVE SECONDARY LLM (Google Gemini)
     # -------------------------------------------------------------
+    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    if gemini_key and gemini_key.strip():
+        gemini_result = _call_gemini_api(gemini_key.strip(), prompt)
+        if gemini_result:
+            print("[LLM Router] Translated successfully via Google Gemini (Supportive)")
+            _TRANSLATION_CACHE[normalized] = gemini_result
+            return gemini_result
+
+    # -------------------------------------------------------------
+    # LAYER 3: OFFLINE LINGUISTIC SOV GRAMMAR ENGINE (Safety Net)
+    # -------------------------------------------------------------
+    print("[LLM Router] Using Infallible Rule-Based SOV Grammar Engine (Offline Fallback)")
     fallback_gloss = _rule_based_isl_converter(text)
     _TRANSLATION_CACHE[normalized] = fallback_gloss
     return fallback_gloss
+
 
 

@@ -42,3 +42,8 @@ out/
 
 # AI config
 .agents/
+
+# Scripts & temporary files
+run_all.bat
+frontend/lint*.txt
+frontend/lint*.json

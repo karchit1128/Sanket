@@ -210,20 +210,8 @@ def translate_to_isl_gloss(text: str) -> str:
                 timeout=8.0
             )
             if resp.status_code == 200:
-                content = resp.json()["choices"][0]["message"]["content"].strip()
-                # Strip complete <think>...</think> blocks
-                content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
-                # Strip any incomplete <think> block (when model ran out of tokens mid-thinking)
-                content = re.sub(r'<think>.*', '', content, flags=re.DOTALL).strip()
-                content = re.sub(r'["\']', '', content).strip().upper()
-                # Only accept pure ASCII uppercase English words
-                content = re.sub(r'[^A-Z\s]', '', content).strip()
-                if content:
-                    print(f"[LLM Router] Groq success: {content!r}")
-                    _TRANSLATION_CACHE[normalized] = content
-                    return content
-                else:
-                    print(f"[LLM Router] Groq returned empty after cleaning")
+                raw_content = resp.json()["choices"][0]["message"]["content"]
+                return f"RAW: {raw_content}"
             else:
                 print(f"[LLM Router] Groq HTTP error: {resp.status_code} {resp.text[:200]}")
         except Exception as e:

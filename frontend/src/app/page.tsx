@@ -1,47 +1,51 @@
 'use client'
 
 import HearingToDeaf from '@/components/HearingToDeaf';
+import FpsCounter from '@/components/FpsCounter';
 
 export default function Home() {
   return (
     <>
-      <div className="mesh-bg" />
-      <main className="flex min-h-screen flex-col items-center justify-center p-4 md:p-8">
-        
-        {/* Header */}
-        <div className="w-full max-w-5xl flex items-center justify-between mb-8 px-4">
-          <div>
-            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-500 mb-2 tracking-tighter drop-shadow-lg">
-              SANKET.AI
-            </h1>
-            <p className="text-sm font-semibold tracking-[0.2em] text-gray-400 uppercase">
-              ISL 3D Avatar Translator
-            </p>
-          </div>
-          
-          <div className="flex gap-3 hidden md:flex">
-            <div className="flex items-center gap-2 bg-black/40 px-4 py-2 rounded-full border border-white/5 backdrop-blur-md">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-bold text-gray-300 uppercase tracking-wider">Avatar Engine Active</span>
-            </div>
-            <a 
-              href={process.env.NEXT_PUBLIC_AURA_URL || "http://localhost:5000"} 
-              target="_blank" 
-              rel="noreferrer"
-              className="flex items-center gap-2 bg-blue-600/30 hover:bg-blue-600/50 px-4 py-2 rounded-full border border-blue-400/30 backdrop-blur-md transition-all text-xs font-bold text-blue-300 uppercase tracking-wider"
-            >
-              Open Camera Mode (AuraGesture) ↗
-            </a>
-          </div>
-        </div>
+      <div className="mesh-bg"></div>
+      <div className="gradient-overlay"></div>
 
-        {/* Avatar Component View */}
-        <div className="w-full max-w-5xl h-[70vh] relative">
+      <div className="container mx-auto py-4 px-4 sm:px-6 lg:px-8 max-w-[1400px] h-screen flex flex-col relative z-10">
+        {/* Floating Navigation Header */}
+        <header className="glass-card mb-4 px-6 py-4 flex flex-wrap justify-between items-center shrink-0">
+            <div className="flex items-center">
+                <div className="logo-orb mr-4 text-xl">
+                    <i className="fa-solid fa-ear-listen" />
+                </div>
+                <div>
+                    <h1 className="logo-text mb-0 text-2xl tracking-tighter">Sanket</h1>
+                    <p className="subtitle-text mb-0">Hearing to Deaf &bull; Voice/Text to 3D Sign Language AI</p>
+                </div>
+            </div>
+            
+            <div className="flex items-center gap-4 mt-3 md:mt-0">
+                <div className="status-badge" id="cameraStatusBadge">
+                    <span className="pulse-dot bg-success"></span>
+                    <span className="badge-label">Engine Active</span>
+                </div>
+                
+                {/* Live FPS Counter */}
+                <FpsCounter />
+
+                <a 
+                  href={process.env.NEXT_PUBLIC_AURA_URL || "http://127.0.0.1:5000"} 
+                  className="btn-action-glass hover:text-cyan-400 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all duration-300 ml-2"
+                  title="Switch to Deaf -> Hearing Mode"
+                >
+                  Switch to Deaf ➔ Hearing
+                </a>
+            </div>
+        </header>
+
+        {/* Main Dashboard Workspace */}
+        <div className="flex-1 min-h-0 pb-4">
           <HearingToDeaf />
         </div>
-        
-      </main>
+      </div>
     </>
   );
 }
-

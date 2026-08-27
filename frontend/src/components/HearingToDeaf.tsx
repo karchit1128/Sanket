@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useAvatarRenderer } from '@/hooks/use-avatar-renderer';
-import { Mic, VolumeX, Send } from 'lucide-react';
+import { Mic, Send } from 'lucide-react';
 
 export default function HearingToDeaf() {
   const [isRecording, setIsRecording] = useState(false);
@@ -78,90 +78,117 @@ export default function HearingToDeaf() {
   };
 
   return (
-    <div className="flex flex-col gap-6 h-full">
-      <div className="flex-1 glass-panel rounded-3xl overflow-hidden relative group">
-        <div className="absolute top-4 left-4 z-10 glass-panel px-4 py-2 rounded-full text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-          <VolumeX size={14} /> Hearing to Deaf
-        </div>
-        <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+    <div className="flex flex-col lg:flex-row gap-4 h-full">
+      {/* Left Panel: Avatar & Visual Controls */}
+      <div className="w-full lg:w-7/12 flex flex-col h-full">
+          <div className="glass-card stagger-1 h-full flex flex-col overflow-hidden relative pb-3">
+              <div className="card-header-bar px-4 py-3 flex justify-between items-center shrink-0">
+                  <div className="flex items-center gap-2">
+                      <i className="fa-solid fa-cube text-magenta"></i>
+                      <span className="panel-title">3D Avatar Signer</span>
+                  </div>
+                  <span className="badge bg-magenta-glow py-1 px-3 rounded-full font-mono text-xs">LIVE RENDER</span>
+              </div>
 
-        {/* Transcript & Gloss Output Overlay */}
-        {(transcript || islGloss) && (
-          <div className="absolute bottom-6 w-full px-6 flex justify-center z-10 transition-all duration-500">
-            <div className="glass-panel bg-black/60 px-8 py-4 rounded-2xl flex flex-col items-center">
-              {transcript && (
-                <>
-                  <span className="text-[10px] text-blue-400 uppercase tracking-widest mb-1">Original Text</span>
-                  <span className="text-lg text-gray-300 mb-3 text-center max-w-lg font-medium">{transcript}</span>
-                </>
-              )}
-              {islGloss && (
-                <>
-                  <span className="text-[10px] text-emerald-400 uppercase tracking-widest mb-1">ISL Gloss</span>
-                  <span className="text-2xl font-bold text-white tracking-widest text-center">{islGloss}</span>
-                </>
-              )}
-              {currentSign && (
-                <div className="mt-4 px-8 py-3 bg-emerald-500/20 border border-emerald-500/50 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-                  <span className="text-[10px] text-emerald-300 uppercase tracking-widest mb-1 block text-center">Currently Signing</span>
-                  <span className="text-4xl font-black text-emerald-400 tracking-[0.2em]">{currentSign}</span>
-                </div>
-              )}
-            </div>
+              {/* Avatar Box Area */}
+              <div className="webcam-container flex-1 bg-black/40 m-3 rounded-2xl relative overflow-hidden border border-white/5">
+                  <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+              </div>
+
+              {/* Input Controls */}
+              <div className="px-3 flex-shrink-0">
+                <form onSubmit={handleTextSubmit} className="flex flex-wrap items-center gap-3 w-full">
+                  <button
+                    type="button"
+                    onClick={startRecording}
+                    disabled={isRecording}
+                    className={`shrink-0 h-10 w-10 sm:w-auto sm:px-4 rounded-xl flex items-center justify-center transition-all duration-300 ${isRecording ? "bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.6)] text-white" : "btn-action-glass hover:text-cyan-400"}`}
+                    title="Voice Input"
+                  >
+                    <Mic size={18} className={isRecording ? "animate-pulse" : "sm:mr-2"} />
+                    <span className="hidden sm:inline font-semibold">{isRecording ? "Listening" : "Use Voice"}</span>
+                  </button>
+                  <select
+                    value={speechLang}
+                    onChange={(e) => setSpeechLang(e.target.value)}
+                    disabled={isRecording}
+                    className="select-glass bg-black/40 border border-white/10 rounded-xl px-3 h-10 text-sm font-medium text-gray-300 focus:outline-none hidden sm:block"
+                  >
+                    <option value="en-US">EN (English)</option>
+                    <option value="hi-IN">HI (Hindi)</option>
+                    <option value="mr-IN">MR (Marathi)</option>
+                    <option value="bn-IN">BN (Bengali)</option>
+                    <option value="ta-IN">TA (Tamil)</option>
+                    <option value="gu-IN">GU (Gujarati)</option>
+                  </select>
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      value={inputText}
+                      onChange={(e: any) => setInputText(e.target.value)}
+                      placeholder={isRecording ? "Listening..." : "Type text to translate..."}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-12 h-10 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 text-sm"
+                      disabled={isRecording}
+                    />
+                    <button
+                      type="submit"
+                      disabled={!inputText.trim() || loading}
+                      className="absolute right-1 top-1 bottom-1 w-8 rounded-lg btn-magenta-glow flex items-center justify-center disabled:opacity-50"
+                    >
+                      <Send size={14} />
+                    </button>
+                  </div>
+                </form>
+              </div>
           </div>
-        )}
       </div>
 
-      {/* Input Controls */}
-      <div className="glass-panel rounded-3xl p-6 flex items-center justify-between gap-4 relative overflow-hidden">
-        {loading && <div className="absolute inset-0 bg-blue-500/10 animate-pulse" />}
+      {/* Right Panel: Output, Translation, Gloss */}
+      <div className="w-full lg:w-5/12 flex flex-col gap-4 h-full">
+          
+          {/* Transcript Panel */}
+          <div className="glass-card stagger-2 p-5 relative overflow-hidden shrink-0 min-h-[140px] flex flex-col justify-center">
+              <div className="glow-accent-left"></div>
+              <span className="small-label-accent">ORIGINAL TRANSCRIPT</span>
+              <div className="mt-3 flex items-center">
+                  <h2 className="text-xl font-medium text-white break-words w-full leading-tight">
+                      {transcript || <span className="text-gray-500 italic text-lg">Waiting for voice or text input...</span>}
+                  </h2>
+              </div>
+          </div>
 
-        <div className="flex items-center gap-3 z-10">
-          <button
-            onClick={startRecording}
-            disabled={isRecording}
-            className={`shrink-0 w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300 ${isRecording
-                ? "bg-red-500 shadow-[0_0_30px_rgba(239,68,68,0.6)] scale-110"
-                : "bg-emerald-600 hover:bg-emerald-500 hover:scale-105 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
-              }`}
-            title="Voice Input"
-          >
-            <Mic size={24} className="text-white" />
-          </button>
+          {/* ISL Gloss Panel */}
+          <div className="glass-card stagger-3 p-5 shrink-0 relative min-h-[160px] flex flex-col">
+              <div className="flex justify-between items-center mb-3">
+                  <span className="panel-sub-title flex items-center"><i className="fa-solid fa-language text-cyan mr-2"></i>ISL Gloss Translation</span>
+                  {loading && <span className="badge bg-cyan-glow animate-pulse py-1 px-2 rounded-md text-[10px]">TRANSLATING</span>}
+              </div>
+              <div className="flex-1 bg-black/20 rounded-xl p-4 border border-white/5 flex items-center shadow-inner overflow-hidden">
+                <span className="text-2xl font-black text-cyan tracking-wider uppercase leading-tight break-words">
+                  {islGloss || <span className="text-gray-600 font-medium">---</span>}
+                </span>
+              </div>
+          </div>
 
-          <select
-            value={speechLang}
-            onChange={(e) => setSpeechLang(e.target.value)}
-            disabled={isRecording}
-            className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm font-semibold text-gray-300 focus:outline-none focus:border-emerald-500/50 cursor-pointer hover:bg-black/60 transition-colors"
-            title="Select Voice Language"
-          >
-            <option value="en-US">EN (English)</option>
-            <option value="hi-IN">HI (Hindi)</option>
-            <option value="mr-IN">MR (Marathi)</option>
-            <option value="bn-IN">BN (Bengali)</option>
-            <option value="ta-IN">TA (Tamil)</option>
-            <option value="gu-IN">GU (Gujarati)</option>
-          </select>
-        </div>
-
-        <form onSubmit={handleTextSubmit} className="flex-1 flex items-center gap-4 z-10">
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e: any) => setInputText(e.target.value)}
-            placeholder={isRecording ? "Listening..." : "Type here or use voice..."}
-            className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white placeholder:text-gray-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
-            disabled={isRecording}
-          />
-          <button
-            type="submit"
-            disabled={!inputText.trim() || loading}
-            className="shrink-0 w-14 h-14 rounded-2xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 flex items-center justify-center transition-colors shadow-[0_0_20px_rgba(37,99,235,0.3)]"
-          >
-            <Send size={24} className="text-white" />
-          </button>
-        </form>
+          {/* Current Sign Panel */}
+          <div className="glass-card stagger-4 p-5 flex-1 flex flex-col min-h-[180px]">
+              <div className="flex justify-between items-center mb-3 shrink-0">
+                  <span className="panel-sub-title flex items-center"><i className="fa-solid fa-play text-magenta mr-2"></i>Active Animation</span>
+              </div>
+              <div className="flex-1 flex flex-col items-center justify-center bg-emerald-500/5 rounded-xl border border-emerald-500/20 relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-emerald-500/50 to-transparent opacity-50" />
+                  {currentSign ? (
+                      <span className="text-4xl font-black text-emerald-400 tracking-widest uppercase animate-pulse drop-shadow-[0_0_15px_rgba(16,185,129,0.3)] text-center px-4">
+                          {currentSign}
+                      </span>
+                  ) : (
+                      <div className="flex flex-col items-center text-gray-600 opacity-60">
+                        <i className="fa-solid fa-person-rays text-3xl mb-2"></i>
+                        <span className="font-semibold tracking-[0.2em] uppercase text-xs">IDLE STATE</span>
+                      </div>
+                  )}
+              </div>
+          </div>
       </div>
     </div>
   );

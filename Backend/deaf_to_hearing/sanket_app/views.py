@@ -316,3 +316,10 @@ def capture_screenshot(request):
 @csrf_exempt
 def speak(request):
     return JsonResponse({"success": True})
+
+
+@csrf_exempt
+def clear_history(request):
+    """Clears the gesture history."""
+    get_engine().clear_history()
+    return JsonResponse({"status": "ok"})

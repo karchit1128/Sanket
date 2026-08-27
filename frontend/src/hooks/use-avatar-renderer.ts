@@ -280,6 +280,8 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         const containerElement = config.containerRef.current;
         if (!containerElement) return;
 
+        let isActive = true;
+
         const ctx = contextRef.current;
 
         // Reset state
@@ -287,9 +289,12 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         ctx.pending = false;
         ctx.animations = [];
 
+        // Clear any existing canvases (solves StrictMode duplication issues)
+        containerElement.innerHTML = '';
+
         // Create scene
         ctx.scene = new THREE.Scene();
-        ctx.scene.background = new THREE.Color(0xf0f0f0);
+        ctx.scene.background = null;
 
         // Enhanced lighting setup for clear material visibility and depth
         // Key light (main light from front-right)
@@ -340,7 +345,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         ctx.renderer.setPixelRatio(window.devicePixelRatio);
         ctx.renderer.shadowMap.enabled = true;
 
-        // Add renderer to container (don't clear innerHTML as React manages it)
+        // Add renderer to container
         containerElement.appendChild(ctx.renderer.domElement);
 
         // Setup Draco loader for compressed models
@@ -359,6 +364,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         loader.load(
             config.modelPath,
             (gltf) => {
+                if (!isActive) return;
                 console.log("Model loaded successfully, processing meshes...");
                 config.onLoadingChange?.(false);
 
@@ -445,7 +451,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
                 // Start render loop with cleanup support
                 if (ctx.renderer && ctx.scene && ctx.camera) {
                     const renderLoop = () => {
-                        if (ctx.renderer && ctx.scene && ctx.camera) {
+                        if (ctx.renderer && ctx.scene && ctx.camera && isActive) {
                             const animationId =
                                 requestAnimationFrame(renderLoop);
                             // Store animation ID for cleanup
@@ -460,6 +466,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
                 console.log("✓ Avatar loaded and rendering");
             },
             (progress) => {
+                if (!isActive) return;
                 if (progress.total > 0) {
                     const percent = (progress.loaded / progress.total) * 100;
                     console.log(`Loading model: ${percent.toFixed(0)}%`);
@@ -468,6 +475,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
                 }
             },
             (error) => {
+                if (!isActive) return;
                 console.error("Error loading 3D model:", error);
                 console.error("Model path attempted:", config.modelPath);
             },
@@ -490,6 +498,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
 
         // Cleanup
         return () => {
+            isActive = false;
             console.log("Starting Three.js cleanup...");
 
             window.removeEventListener("resize", handleResize);

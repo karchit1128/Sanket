@@ -6,8 +6,8 @@ const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'Project Sanket | ISL Translator',
-  description: 'Bi-directional Indian Sign Language Translator for SIH',
+  title: 'Sanket',
+  description: 'AI-Powered Hearing to Deaf & Deaf to Hearing ISL Translation',
 };
 
 import KeepAlive from '@/components/KeepAlive';

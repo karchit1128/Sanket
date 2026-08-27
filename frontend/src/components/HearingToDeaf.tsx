@@ -108,19 +108,58 @@ export default function HearingToDeaf() {
                     <Mic size={18} className={isRecording ? "animate-pulse" : "sm:mr-2"} />
                     <span className="hidden sm:inline font-semibold">{isRecording ? "Listening" : "Use Voice"}</span>
                   </button>
-                  <select
-                    value={speechLang}
-                    onChange={(e) => setSpeechLang(e.target.value)}
-                    disabled={isRecording}
-                    className="select-glass bg-black/40 border border-white/10 rounded-xl px-3 h-10 text-sm font-medium text-gray-300 focus:outline-none hidden sm:block"
-                  >
-                    <option value="en-US">EN (English)</option>
-                    <option value="hi-IN">HI (Hindi)</option>
-                    <option value="mr-IN">MR (Marathi)</option>
-                    <option value="bn-IN">BN (Bengali)</option>
-                    <option value="ta-IN">TA (Tamil)</option>
-                    <option value="gu-IN">GU (Gujarati)</option>
-                  </select>
+                  {/* Custom Language Dropdown */}
+                  <div className="relative hidden sm:block">
+                    <button
+                      type="button"
+                      disabled={isRecording}
+                      onClick={() => {
+                        const menu = document.getElementById('lang-dropdown-menu');
+                        if (menu) menu.classList.toggle('hidden');
+                      }}
+                      onBlur={() => {
+                        // Delay hiding slightly so clicks register
+                        setTimeout(() => {
+                          const menu = document.getElementById('lang-dropdown-menu');
+                          if (menu) menu.classList.add('hidden');
+                        }, 150);
+                      }}
+                      className="select-glass bg-black/40 border border-white/10 rounded-xl px-4 h-10 text-sm font-medium text-gray-300 focus:outline-none flex items-center justify-between min-w-[145px] hover:border-cyan-500/50 hover:bg-white/5 transition-colors disabled:opacity-50"
+                    >
+                      <span>
+                        {speechLang === 'en-US' && 'EN (English)'}
+                        {speechLang === 'hi-IN' && 'HI (Hindi)'}
+                        {speechLang === 'mr-IN' && 'MR (Marathi)'}
+                        {speechLang === 'bn-IN' && 'BN (Bengali)'}
+                        {speechLang === 'ta-IN' && 'TA (Tamil)'}
+                        {speechLang === 'gu-IN' && 'GU (Gujarati)'}
+                      </span>
+                      <svg className="w-4 h-4 ml-2 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                    </button>
+
+                    <div id="lang-dropdown-menu" className="absolute bottom-full left-0 mb-2 w-full min-w-[145px] bg-[#1a1a2e]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-xl shadow-cyan-900/20 overflow-hidden z-50 hidden transition-all">
+                      {[
+                        { val: 'en-US', label: 'EN (English)' },
+                        { val: 'hi-IN', label: 'HI (Hindi)' },
+                        { val: 'mr-IN', label: 'MR (Marathi)' },
+                        { val: 'bn-IN', label: 'BN (Bengali)' },
+                        { val: 'ta-IN', label: 'TA (Tamil)' },
+                        { val: 'gu-IN', label: 'GU (Gujarati)' }
+                      ].map((lang) => (
+                        <button
+                          key={lang.val}
+                          type="button"
+                          onClick={() => {
+                            setSpeechLang(lang.val);
+                            document.getElementById('lang-dropdown-menu')?.classList.add('hidden');
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-cyan-500/20 ${speechLang === lang.val ? 'text-cyan-400 font-semibold bg-cyan-500/10' : 'text-gray-300'}`}
+                        >
+                          {lang.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="flex-1 relative">
                     <input
                       type="text"

@@ -4,3 +4,5 @@ mediapipe>=0.10.14
 numpy>=1.26.0
 protobuf>=3.20.0
 gunicorn>=21.2.0
+django-cors-headers>=4.0.0
+whitenoise>=6.0.0

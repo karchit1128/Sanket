@@ -257,13 +257,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 HandLandmarker = window.HandLandmarker;
                 FilesetResolver = window.FilesetResolver;
             } else {
-                const visionModule = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm');
+                const visionModule = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/+esm');
                 HandLandmarker = visionModule.HandLandmarker;
                 FilesetResolver = visionModule.FilesetResolver;
             }
 
             const vision = await FilesetResolver.forVisionTasks(
-                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
             );
             browserHandLandmarker = await HandLandmarker.createFromOptions(vision, {
                 baseOptions: {
@@ -700,7 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fetch('/clear_history', { method: 'POST' })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.status === 'success') {
+                    if (data.status === 'ok') {
                         updateHistoryList([]); // Clear the frontend UI immediately
                     }
                 })

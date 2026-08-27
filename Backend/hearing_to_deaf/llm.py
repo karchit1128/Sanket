@@ -64,8 +64,11 @@ _TRANSLATION_CACHE = {}
 
 
 def _clean_text(text: str) -> str:
-    """Normalize input text: remove extra punctuation and lowercase."""
-    cleaned = re.sub(r'[^\w\s\?]', '', text.strip().lower())
+    """Normalize input text: remove extra punctuation and lowercase.
+    Preserves Unicode characters including Hindi/Devanagari.
+    """
+    # Use re.UNICODE so \w matches Hindi/Devanagari chars too
+    cleaned = re.sub(r'[^\w\s\?]', '', text.strip().lower(), flags=re.UNICODE)
     return re.sub(r'\s+', ' ', cleaned)
 
 
@@ -189,6 +192,7 @@ def translate_to_isl_gloss(text: str) -> str:
         os.getenv("BACKUP_GROQ_API_KEY")
     ]
     groq_keys = [k.strip() for k in candidate_groq_keys if k and k.strip().startswith("gsk_")]
+    print(f"[DEBUG] Input text: {text!r} | Normalized: {normalized!r} | Groq keys found: {len(groq_keys)}")
 
     for key in groq_keys:
         try:

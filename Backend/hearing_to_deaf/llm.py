@@ -79,6 +79,10 @@ def _rule_based_isl_converter(text: str) -> str:
     if not words:
         return ""
 
+    # Check for non-English characters (e.g., Hindi/Devanagari) in offline mode
+    if any(ord(char) > 127 for char in text):
+        return "API KEYS MISSING FOR HINDI TRANSLATION"
+
     stopwords = {
         "is", "am", "are", "was", "were", "be", "been", "being",
         "a", "an", "the",
@@ -191,10 +195,10 @@ def translate_to_isl_gloss(text: str) -> str:
             client = Groq(api_key=key, timeout=3.5)
             response = client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English, translate to English first. Output ONLY uppercase English words separated by single spaces."},
+                    {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output Hindi characters."},
                     {"role": "user", "content": prompt}
                 ],
-                model="qwen/qwen3.8-27b",
+                model="llama-3.1-8b-instant",
                 temperature=0.0,
                 max_tokens=60,
             )

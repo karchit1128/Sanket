@@ -199,7 +199,7 @@ def translate_to_isl_gloss(text: str) -> str:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama-3.1-8b-instant",
+                    "model": "qwen/qwen3.6-27b",
                     "messages": [
                         {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi, Marathi, Gujarati), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output any non-English characters."},
                         {"role": "user", "content": prompt}
@@ -211,14 +211,17 @@ def translate_to_isl_gloss(text: str) -> str:
             )
             if resp.status_code == 200:
                 content = resp.json()["choices"][0]["message"]["content"].strip()
+                # Strip <think>...</think> chain-of-thought blocks from Qwen model
+                content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
                 content = re.sub(r'["\']', '', content).strip().upper()
-                # Reject if response contains non-English characters
-                if content and all(ord(c) < 128 or c == ' ' for c in content):
+                # Only accept pure ASCII uppercase English words
+                content = re.sub(r'[^A-Z\s]', '', content).strip()
+                if content:
                     print(f"[LLM Router] Groq success: {content!r}")
                     _TRANSLATION_CACHE[normalized] = content
                     return content
                 else:
-                    print(f"[LLM Router] Groq returned non-English output: {content!r}")
+                    print(f"[LLM Router] Groq returned empty after cleaning")
             else:
                 print(f"[LLM Router] Groq HTTP error: {resp.status_code} {resp.text[:200]}")
         except Exception as e:

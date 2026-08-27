@@ -83,8 +83,9 @@ def _rule_based_isl_converter(text: str) -> str:
         return ""
 
     # Check for non-English characters (e.g., Hindi/Devanagari) in offline mode
-    if any(ord(char) > 127 for char in text):
-        return "API KEYS MISSING FOR HINDI TRANSLATION"
+    # Can't translate without AI API, return empty so UI handles it gracefully
+    if any(ord(char) > 127 for char in cleaned):
+        return ""
 
     stopwords = {
         "is", "am", "are", "was", "were", "be", "been", "being",
@@ -185,36 +186,44 @@ def translate_to_isl_gloss(text: str) -> str:
     )
 
     # -------------------------------------------------------------
-    # LAYER 1: PRIMARY LLM (Groq LLaMA-3.1)
+    # LAYER 1: PRIMARY LLM (Groq via direct HTTP - no SDK timeout issues)
     # -------------------------------------------------------------
-    candidate_groq_keys = [
-        os.getenv("GROQ_API_KEY"),
-        os.getenv("BACKUP_GROQ_API_KEY")
-    ]
-    groq_keys = [k.strip() for k in candidate_groq_keys if k and k.strip().startswith("gsk_")]
-    print(f"[DEBUG] Input text: {text!r} | Normalized: {normalized!r} | Groq keys found: {len(groq_keys)}")
+    groq_key = os.getenv("GROQ_API_KEY") or os.getenv("BACKUP_GROQ_API_KEY")
+    print(f"[DEBUG] Input: {text!r} | Normalized: {normalized!r} | Groq key present: {bool(groq_key)}")
 
-    for key in groq_keys:
+    if groq_key and groq_key.strip().startswith("gsk_"):
         try:
-            client = Groq(api_key=key, timeout=8.0)
-            response = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output Hindi characters."},
-                    {"role": "user", "content": prompt}
-                ],
-                model="llama-3.1-8b-instant",
-                temperature=0.0,
-                max_tokens=60,
+            resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {groq_key.strip()}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [
+                        {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi, Marathi, Gujarati), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output any non-English characters."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.0,
+                    "max_tokens": 60
+                },
+                timeout=9.0
             )
-            content = response.choices[0].message.content.strip()
-            content = re.sub(r'["\']', '', content).strip().upper()
-            if content:
-                print("[LLM Router] Translated successfully via Groq (Primary)")
-                _TRANSLATION_CACHE[normalized] = content
-                return content
+            if resp.status_code == 200:
+                content = resp.json()["choices"][0]["message"]["content"].strip()
+                content = re.sub(r'["\']', '', content).strip().upper()
+                # Reject if response contains non-English characters
+                if content and all(ord(c) < 128 or c == ' ' for c in content):
+                    print(f"[LLM Router] Groq success: {content!r}")
+                    _TRANSLATION_CACHE[normalized] = content
+                    return content
+                else:
+                    print(f"[LLM Router] Groq returned non-English output: {content!r}")
+            else:
+                print(f"[LLM Router] Groq HTTP error: {resp.status_code} {resp.text[:200]}")
         except Exception as e:
-            print(f"[Groq Primary Layer Failed] ({e}) -> Switching to Supportive Gemini...")
-            break
+            print(f"[LLM Router] Groq HTTP call failed: {e}")
 
     # -------------------------------------------------------------
     # LAYER 2: SUPPORTIVE SECONDARY LLM (Google Gemini)

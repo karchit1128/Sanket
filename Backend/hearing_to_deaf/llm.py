@@ -223,11 +223,11 @@ def translate_to_isl_gloss(text: str) -> str:
                     _TRANSLATION_CACHE[normalized] = content
                     return content
                 else:
-                    print(f"[LLM Router] Groq returned empty after cleaning")
+                    return f"GROQ CLEANING ERROR: returned empty"
             else:
-                print(f"[LLM Router] Groq HTTP error: {resp.status_code} {resp.text[:200]}")
+                return f"GROQ HTTP ERROR: {resp.status_code} - {resp.text[:100]}"
         except Exception as e:
-            print(f"[LLM Router] Groq HTTP call failed: {e}")
+            return f"GROQ EXCEPTION: {str(e)}"
 
     # -------------------------------------------------------------
     # LAYER 2: SUPPORTIVE SECONDARY LLM (Google Gemini)
@@ -239,6 +239,8 @@ def translate_to_isl_gloss(text: str) -> str:
             print("[LLM Router] Translated successfully via Google Gemini (Supportive)")
             _TRANSLATION_CACHE[normalized] = gemini_result
             return gemini_result
+        
+    return f"FALLBACK REACHED: Hindi unsupported offline (Groq Key present: {bool(groq_key)})"
 
     # -------------------------------------------------------------
     # LAYER 3: OFFLINE LINGUISTIC SOV GRAMMAR ENGINE (Safety Net)

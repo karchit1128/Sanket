@@ -2,6 +2,7 @@
  * Core animation types for sign language gesture system
  * Defines the structure for skeletal animation data
  */
+import type * as THREE from 'three';
 
 /**
  * Animation instruction tuple structure:
@@ -31,12 +32,12 @@ export type AnimationFrame = AnimationInstruction[];
  */
 export interface AnimationContext {
     animations: (AnimationFrame | string[])[]; // Queue of pending animation frames
-    avatar: any; // Three.js 3D model object with skeleton
+    avatar: THREE.Object3D | null; // Three.js 3D model object with skeleton
     pending: boolean; // Flag indicating if animation loop is running
     animate: () => void; // Main animation loop function
-    scene?: any; // Three.js scene object
-    camera?: any; // Three.js camera object
-    renderer?: any; // Three.js WebGL renderer
+    scene?: THREE.Scene; // Three.js scene object
+    camera?: THREE.PerspectiveCamera; // Three.js camera object
+    renderer?: THREE.WebGLRenderer; // Three.js WebGL renderer
     flag?: boolean; // Pause flag between gestures
     boneNameMap?: Record<string, string>; // optional mapping from shorthand to rig bone names
 }

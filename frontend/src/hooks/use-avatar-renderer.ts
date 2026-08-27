@@ -10,7 +10,7 @@ import * as AlphabetGestures from "@/lib/Animations";
  * Configuration options for the 3D avatar renderer
  */
 interface AvatarRendererConfig {
-    containerElement: HTMLElement | null;
+    containerRef: React.RefObject<HTMLElement | null>;
     modelPath: string;
     animationSpeed: number;
     pauseDuration: number;
@@ -43,7 +43,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         animations: [],
         avatar: null,
         pending: false,
-        animate: () => {},
+        animate: () => { },
         scene: undefined,
         camera: undefined,
         renderer: undefined,
@@ -175,7 +175,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
                     return found;
                 };
 
-                for (let i = 0; i < currentFrame.length; ) {
+                for (let i = 0; i < currentFrame.length;) {
                     const instruction = currentFrame[i] as [
                         string,
                         string,
@@ -277,7 +277,8 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
      * Initialize Three.js scene when container is available
      */
     useEffect(() => {
-        if (!config.containerElement) return;
+        const containerElement = config.containerRef.current;
+        if (!containerElement) return;
 
         const ctx = contextRef.current;
 
@@ -317,8 +318,8 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         ctx.scene.add(ambientLight);
 
         // Setup camera - positioned for upper body focus
-        const containerWidth = config.containerElement.clientWidth;
-        const containerHeight = config.containerElement.clientHeight;
+        const containerWidth = containerElement.clientWidth;
+        const containerHeight = containerElement.clientHeight;
 
         ctx.camera = new THREE.PerspectiveCamera(
             40,
@@ -340,7 +341,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         ctx.renderer.shadowMap.enabled = true;
 
         // Add renderer to container (don't clear innerHTML as React manages it)
-        config.containerElement.appendChild(ctx.renderer.domElement);
+        containerElement.appendChild(ctx.renderer.domElement);
 
         // Setup Draco loader for compressed models
         const dracoLoader = new DRACOLoader();
@@ -474,11 +475,11 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
 
         // Handle window resize
         const handleResize = () => {
-            if (!config.containerElement || !ctx.camera || !ctx.renderer)
+            if (!containerElement || !ctx.camera || !ctx.renderer)
                 return;
 
-            const width = config.containerElement.clientWidth;
-            const height = config.containerElement.clientHeight;
+            const width = containerElement.clientWidth;
+            const height = containerElement.clientHeight;
 
             ctx.camera.aspect = width / height;
             ctx.camera.updateProjectionMatrix();
@@ -546,7 +547,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
             console.log("Three.js cleanup complete");
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [config.containerElement, config.modelPath]);
+    }, [config.containerRef, config.modelPath]);
 
     /**
      * Execute sign language animation sequence for input text
@@ -559,6 +560,10 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
             console.warn("Avatar not loaded yet");
             return;
         }
+
+        // Clear any existing animation queue to prevent looping or stuck animations
+        ctx.animations = [];
+        ctx.pending = false;
 
         // Tokenize input: split into words (letters only) and non-words (spaces, punctuation, numbers)
         // This regex matches a sequence of letters OR a sequence of non-letters
@@ -585,7 +590,7 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
                 const titleCaseWord =
                     wordAliasMap[lowerToken] ||
                     token.charAt(0).toUpperCase() +
-                        token.slice(1).toLowerCase();
+                    token.slice(1).toLowerCase();
                 const wordFunctionName =
                     `createWord${titleCaseWord}` as keyof typeof AlphabetGestures;
                 const wordAnimation = AlphabetGestures[wordFunctionName];
@@ -610,36 +615,28 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
                         AlphabetGestures[combinedFuncName];
 
                     if (typeof combinedAnimation === "function") {
-                        // Start highlight for the first char
-                        ctx.animations.push(["add-text", token.charAt(0)]);
+                        // Show the entire combined phrase immediately
+                        ctx.animations.push([
+                            "add-text",
+                            token + tokens[i + 1] + nextWord,
+                        ]);
 
                         // Queue combined word animation (e.g., createWordThankYou)
                         combinedAnimation(ctx);
 
-                        // Then show the rest of the combined phrase as text
-                        ctx.animations.push([
-                            "add-text",
-                            token.slice(1) + tokens[i + 1] + nextWord,
-                        ]);
-
                         // Skip the next two tokens since we consumed them
-                        i += 3;
+                        i += 2;
                         continue;
                     }
                 }
 
                 if (typeof wordAnimation === "function") {
                     // Found a word gesture
-                    // Update text with first char to start highlighting
-                    ctx.animations.push(["add-text", token.charAt(0)]);
+                    // Show the entire word immediately
+                    ctx.animations.push(["add-text", token]);
 
                     // Queue the word animation
                     wordAnimation(ctx);
-
-                    // Update text with the rest of the word after animation starts
-                    if (token.length > 1) {
-                        ctx.animations.push(["add-text", token.slice(1)]);
-                    }
                 } else {
                     // No word gesture, spell it out letter by letter
                     for (const char of token) {

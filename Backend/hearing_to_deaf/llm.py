@@ -1,5 +1,6 @@
 from groq import Groq
 import os
+import requests
 import re
 from dotenv import load_dotenv
 
@@ -167,10 +168,11 @@ def translate_to_isl_gloss(text: str) -> str:
         f"You are a strict Indian Sign Language (ISL) translator.\n"
         f"Convert the sentence into ISL Gloss.\n"
         f"Rules:\n"
-        f"1. Use Subject-Object-Verb (SOV) structure.\n"
-        f"2. Remove helper verbs (is, am, are, was, were) and articles (a, an, the).\n"
-        f"3. Output strictly UPPERCASE English words separated by spaces.\n"
-        f"4. NO explanations, NO intro, NO punctuation.\n\n"
+        f"1. If the input is in Hindi or any other language, FIRST translate it to English.\n"
+        f"2. Use Subject-Object-Verb (SOV) structure.\n"
+        f"3. Remove helper verbs (is, am, are, was, were) and articles (a, an, the).\n"
+        f"4. Output strictly UPPERCASE English words separated by spaces.\n"
+        f"5. NO explanations, NO intro, NO punctuation.\n\n"
         f"Input: {text}\n"
         f"Output:"
     )
@@ -189,10 +191,10 @@ def translate_to_isl_gloss(text: str) -> str:
             client = Groq(api_key=key, timeout=3.5)
             response = client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": "You are a strict ISL Gloss translator. Output ONLY uppercase words separated by single spaces."},
+                    {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English, translate to English first. Output ONLY uppercase English words separated by single spaces."},
                     {"role": "user", "content": prompt}
                 ],
-                model="llama-3.1-8b-instant",
+                model="qwen/qwen3.8-27b",
                 temperature=0.0,
                 max_tokens=60,
             )

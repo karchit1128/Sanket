@@ -25,7 +25,7 @@ export default function Home() {
               <span className="text-xs font-bold text-gray-300 uppercase tracking-wider">Avatar Engine Active</span>
             </div>
             <a 
-              href={process.env.NEXT_PUBLIC_AURA_URL || "http://localhost:8001"} 
+              href={process.env.NEXT_PUBLIC_AURA_URL || "http://localhost:5000"} 
               target="_blank" 
               rel="noreferrer"
               className="flex items-center gap-2 bg-blue-600/30 hover:bg-blue-600/50 px-4 py-2 rounded-full border border-blue-400/30 backdrop-blur-md transition-all text-xs font-bold text-blue-300 uppercase tracking-wider"

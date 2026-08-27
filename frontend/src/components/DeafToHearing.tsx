@@ -65,13 +65,13 @@ export default function DeafToHearing({ isVisible }: { isVisible: boolean }) {
             if (data.status) setStatus(data.status);
             if (data.indicator) setIndicator(data.indicator);
             if (data.prediction) setDeafTranslation(data.prediction);
-            
+
             // Handle flash effect when prediction fires
             if (data.prediction_fired) {
-               setIndicator('flash');
-               setTimeout(() => setIndicator('green'), 300);
+              setIndicator('flash');
+              setTimeout(() => setIndicator('green'), 300);
             }
-            
+
             const ctx = overlayRef.current?.getContext('2d');
             if (ctx && overlayRef.current) {
               ctx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
@@ -130,27 +130,25 @@ export default function DeafToHearing({ isVisible }: { isVisible: boolean }) {
         {isCameraActive ? (
           <>
             <canvas ref={overlayRef} width={640} height={480} className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10" />
-            
+
             {/* Status Indicator Light */}
             <div className="absolute top-6 right-6 z-30 flex items-center gap-3 glass-panel px-4 py-2 rounded-full shadow-lg">
               <span className="text-xs font-bold text-gray-300 uppercase tracking-widest">{status}</span>
-              <div className={`w-4 h-4 rounded-full shadow-[0_0_10px_currentColor] transition-all duration-300 ${
-                indicator === 'red' ? 'bg-red-500 text-red-500' : 
-                indicator === 'yellow' ? 'bg-yellow-400 text-yellow-400' :
-                indicator === 'green' ? 'bg-green-500 text-green-500' :
-                indicator === 'pulsing' ? 'bg-blue-500 text-blue-500 animate-pulse scale-125' :
-                indicator === 'flash' ? 'bg-white text-white scale-150 shadow-[0_0_30px_#fff]' :
-                'bg-gray-500 text-gray-500'
-              }`} />
+              <div className={`w-4 h-4 rounded-full shadow-[0_0_10px_currentColor] transition-all duration-300 ${indicator === 'red' ? 'bg-red-500 text-red-500' :
+                  indicator === 'yellow' ? 'bg-yellow-400 text-yellow-400' :
+                    indicator === 'green' ? 'bg-green-500 text-green-500' :
+                      indicator === 'pulsing' ? 'bg-blue-500 text-blue-500 animate-pulse scale-125' :
+                        indicator === 'flash' ? 'bg-white text-white scale-150 shadow-[0_0_30px_#fff]' :
+                          'bg-gray-500 text-gray-500'
+                }`} />
             </div>
 
             {/* Hand Zone Overlay */}
-            <div className={`absolute top-[20%] left-[10%] right-[10%] bottom-[20%] pointer-events-none z-20 border-2 rounded-3xl transition-all duration-300 ${
-              indicator === 'pulsing' ? 'border-blue-500/80 bg-blue-500/5 shadow-[0_0_30px_rgba(59,130,246,0.3)_inset]' : 
-              indicator === 'flash' ? 'border-white bg-white/20' : 
-              'border-blue-500/20 border-dashed'
-            }`} />
-            
+            <div className={`absolute top-[20%] left-[10%] right-[10%] bottom-[20%] pointer-events-none z-20 border-2 rounded-3xl transition-all duration-300 ${indicator === 'pulsing' ? 'border-blue-500/80 bg-blue-500/5 shadow-[0_0_30px_rgba(59,130,246,0.3)_inset]' :
+                indicator === 'flash' ? 'border-white bg-white/20' :
+                  'border-blue-500/20 border-dashed'
+              }`} />
+
           </>
         ) : (
           <div className="text-center flex flex-col items-center gap-4 text-blue-400/60 p-8">

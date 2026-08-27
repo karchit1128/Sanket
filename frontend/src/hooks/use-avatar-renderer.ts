@@ -127,6 +127,13 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
                 ctx.animations.shift();
                 return;
             }
+            if (currentFrame[0] === "clear-text") {
+                if (onTextUpdateRef.current) {
+                    onTextUpdateRef.current("CLEAR_NOW");
+                }
+                ctx.animations.shift();
+                return;
+            }
 
             if (!ctx.flag) {
                 const currentTime = performance.now();
@@ -573,6 +580,9 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         // Clear any existing animation queue to prevent looping or stuck animations
         ctx.animations = [];
         ctx.pending = false;
+        
+        // Signal the UI to clear the active animation text
+        ctx.animations.push(["clear-text"]);
 
         // Tokenize input: split into words (letters only) and non-words (spaces, punctuation, numbers)
         // This regex matches a sequence of letters OR a sequence of non-letters

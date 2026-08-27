@@ -20,7 +20,10 @@ export default function HearingToDeaf() {
     modelPath: "/ybot.glb",
     animationSpeed: 1.2,
     pauseDuration: 300,
-    onTextUpdate: (text) => setCurrentSign((prev) => prev + text),
+    onTextUpdate: (text) => {
+      if (text === "CLEAR_NOW") setCurrentSign("");
+      else setCurrentSign((prev) => prev + text);
+    },
   });
 
   const startRecording = () => {
@@ -56,7 +59,6 @@ export default function HearingToDeaf() {
 
   const translateToISL = async (text: string) => {
     setLoading(true);
-    setCurrentSign(""); // Reset the live sign text
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
       const res = await fetch(`${backendUrl}/translate`, {

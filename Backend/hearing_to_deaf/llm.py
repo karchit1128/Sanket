@@ -192,7 +192,7 @@ def translate_to_isl_gloss(text: str) -> str:
 
     for key in groq_keys:
         try:
-            client = Groq(api_key=key, timeout=3.5)
+            client = Groq(api_key=key, timeout=8.0)
             response = client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output Hindi characters."},

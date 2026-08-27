@@ -218,6 +218,11 @@ class GestureEngine:
     def get_history(self):
         with self.lock:
             return self.history[:10]
+            
+    def clear_history(self):
+        with self.lock:
+            self.history.clear()
+            self.stabilizer.clear()
 
 
 # Singleton

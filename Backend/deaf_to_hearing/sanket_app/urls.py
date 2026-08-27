@@ -9,5 +9,6 @@ urlpatterns = [
     path('toggle_voice', views.toggle_voice, name='toggle_voice'),
     path('capture_screenshot', views.capture_screenshot, name='capture_screenshot'),
     path('speak', views.speak, name='speak'),
+    path('clear_history', views.clear_history, name='clear_history'),
 ]
 

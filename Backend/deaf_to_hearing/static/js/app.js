@@ -595,16 +595,34 @@ document.addEventListener('DOMContentLoaded', () => {
     function captureScreenshot() {
         if (elements.screenshotBtn.disabled) return;
         
-        fetch('/capture_screenshot', { method: 'POST' })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    addScreenshotToGallery(data.img_url);
-                } else {
-                    alert("Failed to capture frame: " + data.error);
-                }
-            })
-            .catch(err => console.error("Error capturing screenshot:", err));
+        try {
+            // Directly capture the current frame from the HTML5 canvas
+            const dataUrl = elements.webcamImage.toDataURL('image/jpeg', 0.9);
+            const ts = new Date().toLocaleTimeString();
+            
+            const html = `
+                <div class="gallery-item position-relative mb-3">
+                    <img src="${dataUrl}" class="img-fluid rounded border border-secondary" alt="Screenshot ${ts}">
+                    <div class="position-absolute bottom-0 end-0 p-2 text-white" style="text-shadow: 0 0 5px black;">${ts}</div>
+                    <a href="${dataUrl}" download="sanket-capture.jpg" class="btn btn-sm btn-light position-absolute top-0 end-0 m-2 btn-dl-screenshot" title="Download Image">
+                        <i class="fa-solid fa-download"></i>
+                    </a>
+                </div>
+            `;
+            elements.galleryContainer.insertAdjacentHTML('afterbegin', html);
+            elements.screenshotDrawer.classList.remove('d-none');
+            
+            // Add a visual flash effect to the webcam container to indicate a picture was taken
+            const container = document.querySelector('.webcam-container');
+            container.style.backgroundColor = 'rgba(255, 255, 255, 0.4)';
+            setTimeout(() => {
+                container.style.backgroundColor = '';
+            }, 100);
+            
+        } catch (err) {
+            console.error("Error capturing screenshot from canvas:", err);
+            alert("Failed to capture screenshot. Is the camera active?");
+        }
     }
 
     // --- Dynamic Screenshot Gallery Drawer Updates ---
@@ -677,12 +695,16 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.galleryContainer.innerHTML = '';
         });
         
-        // Clear log - restart browser camera to reset stabilizer
+        // Clear log - trigger backend clear API and clear frontend UI
         elements.clearHistoryBtn.addEventListener('click', () => {
-            if (cameraStream) {
-                stopCamera();
-                setTimeout(() => toggleWebcam('start'), 200);
-            }
+            fetch('/clear_history', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateHistoryList([]); // Clear the frontend UI immediately
+                    }
+                })
+                .catch(err => console.error("Error clearing history:", err));
         });
 
 

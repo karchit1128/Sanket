@@ -199,18 +199,22 @@ def translate_to_isl_gloss(text: str) -> str:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama3-8b-8192",
+                    "model": "qwen/qwen3.6-27b",
                     "messages": [
                         {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi, Marathi, Gujarati), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output any non-English characters. No explanations."},
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.0,
-                    "max_tokens": 100
+                    "max_tokens": 2048
                 },
                 timeout=8.0
             )
             if resp.status_code == 200:
                 content = resp.json()["choices"][0]["message"]["content"].strip()
+                # Strip complete <think>...</think> blocks
+                content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+                # Strip any incomplete <think> block
+                content = re.sub(r'<think>.*', '', content, flags=re.DOTALL).strip()
                 content = re.sub(r'["\']', '', content).strip().upper()
                 # Only accept pure ASCII uppercase English words
                 content = re.sub(r'[^A-Z\s]', '', content).strip()

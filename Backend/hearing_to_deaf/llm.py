@@ -199,19 +199,27 @@ def translate_to_isl_gloss(text: str) -> str:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama-3.1-8b-instant",
+                    "model": "llama3-8b-8192",
                     "messages": [
                         {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi, Marathi, Gujarati), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output any non-English characters. No explanations."},
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.0,
-                    "max_tokens": 60
+                    "max_tokens": 100
                 },
                 timeout=8.0
             )
             if resp.status_code == 200:
-                raw_content = resp.json()["choices"][0]["message"]["content"]
-                return f"RAW: {raw_content}"
+                content = resp.json()["choices"][0]["message"]["content"].strip()
+                content = re.sub(r'["\']', '', content).strip().upper()
+                # Only accept pure ASCII uppercase English words
+                content = re.sub(r'[^A-Z\s]', '', content).strip()
+                if content:
+                    print(f"[LLM Router] Groq success: {content!r}")
+                    _TRANSLATION_CACHE[normalized] = content
+                    return content
+                else:
+                    return f"GROQ CLEANING ERROR: returned empty (Raw: {resp.json()['choices'][0]['message']['content']})"
             else:
                 return f"GROQ HTTP ERROR: {resp.status_code} {resp.text[:200]}"
         except Exception as e:

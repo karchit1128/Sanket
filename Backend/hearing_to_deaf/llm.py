@@ -199,15 +199,15 @@ def translate_to_isl_gloss(text: str) -> str:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "qwen/qwen3.6-27b",
+                    "model": "llama-3.1-8b-instant",
                     "messages": [
-                        {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi, Marathi, Gujarati), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output any non-English characters."},
+                        {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi, Marathi, Gujarati), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output any non-English characters. No explanations."},
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.0,
-                    "max_tokens": 200
+                    "max_tokens": 60
                 },
-                timeout=9.0
+                timeout=8.0
             )
             if resp.status_code == 200:
                 content = resp.json()["choices"][0]["message"]["content"].strip()
@@ -223,11 +223,11 @@ def translate_to_isl_gloss(text: str) -> str:
                     _TRANSLATION_CACHE[normalized] = content
                     return content
                 else:
-                    return f"GROQ CLEANING ERROR: returned empty"
+                    print(f"[LLM Router] Groq returned empty after cleaning")
             else:
-                return f"GROQ HTTP ERROR: {resp.status_code} - {resp.text[:100]}"
+                print(f"[LLM Router] Groq HTTP error: {resp.status_code} {resp.text[:200]}")
         except Exception as e:
-            return f"GROQ EXCEPTION: {str(e)}"
+            print(f"[LLM Router] Groq HTTP call failed: {e}")
 
     # -------------------------------------------------------------
     # LAYER 2: SUPPORTIVE SECONDARY LLM (Google Gemini)
@@ -239,8 +239,6 @@ def translate_to_isl_gloss(text: str) -> str:
             print("[LLM Router] Translated successfully via Google Gemini (Supportive)")
             _TRANSLATION_CACHE[normalized] = gemini_result
             return gemini_result
-        
-    return f"FALLBACK REACHED: Hindi unsupported offline (Groq Key present: {bool(groq_key)})"
 
     # -------------------------------------------------------------
     # LAYER 3: OFFLINE LINGUISTIC SOV GRAMMAR ENGINE (Safety Net)

@@ -213,9 +213,9 @@ def translate_to_isl_gloss(text: str) -> str:
                 raw_content = resp.json()["choices"][0]["message"]["content"]
                 return f"RAW: {raw_content}"
             else:
-                print(f"[LLM Router] Groq HTTP error: {resp.status_code} {resp.text[:200]}")
+                return f"GROQ HTTP ERROR: {resp.status_code} {resp.text[:200]}"
         except Exception as e:
-            print(f"[LLM Router] Groq HTTP call failed: {e}")
+            return f"GROQ EXCEPTION: {e}"
 
     # -------------------------------------------------------------
     # LAYER 2: SUPPORTIVE SECONDARY LLM (Google Gemini)

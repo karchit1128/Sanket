@@ -205,8 +205,7 @@ def translate_to_isl_gloss(text: str) -> str:
                         {"role": "user", "content": prompt}
                     ],
                     "temperature": 0.0,
-                    "max_tokens": 200,
-                    "thinking": {"type": "disabled"}
+                    "max_tokens": 200
                 },
                 timeout=9.0
             )

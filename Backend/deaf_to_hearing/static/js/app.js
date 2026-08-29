@@ -20,15 +20,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const chartData = Array(maxChartDataPoints).fill(0);
 
     // --- DOM Elements ---
+    let currentGestureMode = 'words'; // 'words' | 'numbers'
+
     const elements = {
         webcamImage: document.getElementById('webcamImage'),
-        cameraPlaceholder: document.getElementById('cameraPlaceholder'),
-        scanningLine: document.getElementById('scanningLine'),
+        activeGestureText: document.getElementById('activeGestureText'),
+        activeGestureIcon: document.getElementById('activeGestureIcon'),
+        confidenceFill: document.getElementById('confidenceFill'),
+        confidenceText: document.getElementById('confidenceText'),
+        chartTimeSpan: document.getElementById('chartTimeSpan'),
+        cameraStatusText: document.getElementById('cameraStatusText'),
         initCameraBtn: document.getElementById('initCameraBtn'),
         toggleCameraBtn: document.getElementById('toggleCameraBtn'),
+        screenshotBtn: document.getElementById('screenshotBtn'),
+        modeToggleBtn: document.getElementById('modeToggleBtn'),
+        modeToggleIcon: document.getElementById('modeToggleIcon'),
+        modeToggleText: document.getElementById('modeToggleText'),
+        btnVoiceBrowser: document.getElementById('btnVoiceBrowser'),
+        cameraPlaceholder: document.getElementById('cameraPlaceholder'),
+        scanningLine: document.getElementById('scanningLine'),
         cameraToggleIcon: document.getElementById('cameraToggleIcon'),
         cameraToggleText: document.getElementById('cameraToggleText'),
-        screenshotBtn: document.getElementById('screenshotBtn'),
         
         // Stats
         cameraStatusBadge: document.getElementById('cameraStatusBadge'),
@@ -91,6 +103,16 @@ document.addEventListener('DOMContentLoaded', () => {
         "Happy": { icon: "fa-face-smile", colorClass: "active-glow" },
         "Question": { icon: "fa-circle-question", colorClass: "active-glow-alt" },
         "Good Morning": { icon: "fa-sun", colorClass: "active-glow" },
+        "0": { icon: "fa-0", colorClass: "active-glow" },
+        "1": { icon: "fa-1", colorClass: "active-glow" },
+        "2": { icon: "fa-2", colorClass: "active-glow" },
+        "3": { icon: "fa-3", colorClass: "active-glow" },
+        "4": { icon: "fa-4", colorClass: "active-glow" },
+        "5": { icon: "fa-5", colorClass: "active-glow" },
+        "6": { icon: "fa-6", colorClass: "active-glow" },
+        "7": { icon: "fa-7", colorClass: "active-glow" },
+        "8": { icon: "fa-8", colorClass: "active-glow" },
+        "9": { icon: "fa-9", colorClass: "active-glow" },
         "Unknown": { icon: "fa-question", colorClass: "" },
         "No Hand": { icon: "fa-hand-slash", colorClass: "" }
     };
@@ -402,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetch('/process_frame', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ landmarks: landmarksToSend, has_hand: landmarksToSend !== null })
+                    body: JSON.stringify({ landmarks: landmarksToSend, has_hand: landmarksToSend !== null, mode: currentGestureMode })
                 })
                 .then(res => res.json())
                 .then(data => updateTelemetryUI(data))
@@ -680,11 +702,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- Set Number/Word Mode ---
+    function setGestureMode(mode) {
+        if (mode === 'numbers') {
+            currentGestureMode = 'numbers';
+            elements.modeToggleIcon.className = 'fa-solid fa-hashtag me-2 text-magenta';
+            elements.modeToggleText.textContent = 'Number Mode';
+            elements.modeToggleBtn.classList.add('border-magenta');
+        } else {
+            currentGestureMode = 'words';
+            elements.modeToggleIcon.className = 'fa-solid fa-font me-2';
+            elements.modeToggleText.textContent = 'Word Mode';
+            elements.modeToggleBtn.classList.remove('border-magenta');
+        }
+    }
+
+    function toggleGestureMode() {
+        setGestureMode(currentGestureMode === 'words' ? 'numbers' : 'words');
+    }
+
     // --- Bind DOM Interactions & Triggers ---
     function bindInterfaceEvents() {
         // Toggle Webcam Click
         elements.initCameraBtn.addEventListener('click', () => toggleWebcam('start'));
         elements.toggleCameraBtn.addEventListener('click', () => toggleWebcam());
+        
+        // Mode Toggle Click
+        elements.modeToggleBtn.addEventListener('click', toggleGestureMode);
         
         // Capture frame Click
         elements.screenshotBtn.addEventListener('click', captureScreenshot);
@@ -737,6 +781,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (currentVoiceMode === 'browser') setVoiceMode('backend');
                 else if (currentVoiceMode === 'backend') setVoiceMode('muted');
                 else setVoiceMode('browser');
+            } else if (key === 'w') {
+                if (currentGestureMode === 'words') setGestureMode('numbers');
+                else setGestureMode('words');
+            } else if (key === 'n') {
+                if (currentGestureMode === 'numbers') setGestureMode('words');
+                else setGestureMode('numbers');
             } else if (key === 'q') {
                 // Escape key or Q shuts camera safely
                 toggleWebcam('stop');

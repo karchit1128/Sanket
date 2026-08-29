@@ -92,7 +92,7 @@ class GestureEngine:
             except Exception as e2:
                 logger.error(f"All MediaPipe init failed: {e2}")
 
-    def process_landmarks(self, landmarks_list, handedness="Right"):
+    def process_landmarks(self, landmarks_list, handedness="Right", mode="words"):
         """
         Process landmarks directly received from browser MediaPipe JS.
         landmarks_list: list of dicts [{'x': float, 'y': float, 'z': float}] (length 21) or None
@@ -107,7 +107,7 @@ class GestureEngine:
             raw_landmarks = [LandmarkWrapper(lm.get('x', 0.0), lm.get('y', 0.0), lm.get('z', 0.0)) for lm in landmarks_list]
             hand_landmarks = HandLandmarksWrapper(raw_landmarks)
             landmarks_out = [{"x": lm.x, "y": lm.y} for lm in raw_landmarks]
-            raw_gesture, raw_confidence = self.detector.detect_gesture(hand_landmarks, handedness)
+            raw_gesture, raw_confidence = self.detector.detect_gesture(hand_landmarks, handedness, mode)
 
         with self.lock:
             locked_gest, smoothed_conf, was_updated = self.stabilizer.add_prediction(raw_gesture, raw_confidence)
@@ -166,7 +166,7 @@ class GestureEngine:
                         except:
                             pass
 
-                    raw_gesture, raw_confidence = self.detector.detect_gesture(hand_landmarks, handedness)
+                    raw_gesture, raw_confidence = self.detector.detect_gesture(hand_landmarks, handedness, mode)
 
             elif hasattr(self, 'hands'):
                 results = self.hands.process(rgb_frame)
@@ -251,6 +251,8 @@ def process_frame(request):
     """
     if request.method != 'POST':
         return JsonResponse({"error": "POST only"}, status=405)
+    
+    mode = request.GET.get('mode', 'words')
 
     content_type = request.headers.get('Content-Type', '')
 
@@ -259,7 +261,8 @@ def process_frame(request):
             data = json.loads(request.body.decode('utf-8'))
             landmarks = data.get('landmarks')
             handedness = data.get('handedness', 'Right')
-            result = get_engine().process_landmarks(landmarks, handedness)
+            mode = data.get('mode', 'words')
+            result = get_engine().process_landmarks(landmarks, handedness, mode=mode)
             return JsonResponse(result)
         except Exception as e:
             logger.error(f"JSON parsing error in process_frame: {e}")

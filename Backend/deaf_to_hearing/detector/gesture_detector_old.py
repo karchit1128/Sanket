@@ -4,22 +4,26 @@ import numpy as np
 TEST_HOOK_ANGLE_MIN = 100
 TEST_HOOK_ANGLE_MAX = 140
 TEST_PALM_Z_TOLERANCE = 0.05
-DEBUG_PRINT_METRICS = True
+DEBUG_PRINT_METRICS = False
 # ---------------------------------------------------------
 
 class GestureDetector:
     def __init__(self):
         pass
 
-    def _get_distance_2d(self, p1, p2):
-        """Calculate Euclidean distance between two 2D landmarks (or 3D ignoring Z)."""
-        return np.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
+    def _get_distance_2d(self, pt1, pt2):
+        """Calculate stable 2D Euclidean distance in the XY plane."""
+        return np.sqrt((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2)
 
     def _get_angle(self, a, b, c):
-        """Calculate angle between 3 points in 2D."""
+        """Calculate angle at joint b given points a, b, c in 2D (in degrees)."""
         ba = np.array([a[0] - b[0], a[1] - b[1]])
         bc = np.array([c[0] - b[0], c[1] - b[1]])
-        cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+        norm_ba = np.linalg.norm(ba)
+        norm_bc = np.linalg.norm(bc)
+        if norm_ba < 1e-6 or norm_bc < 1e-6:
+            return 0.0
+        cosine_angle = np.dot(ba, bc) / (norm_ba * norm_bc)
         cosine_angle = np.clip(cosine_angle, -1.0, 1.0)
         return np.degrees(np.arccos(cosine_angle))
 

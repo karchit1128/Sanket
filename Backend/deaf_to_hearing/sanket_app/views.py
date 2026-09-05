@@ -1,5 +1,5 @@
 import os
-import cv2
+# import cv2
 import time
 import json
 import threading
@@ -92,22 +92,36 @@ class GestureEngine:
             except Exception as e2:
                 logger.error(f"All MediaPipe init failed: {e2}")
 
-    def process_landmarks(self, landmarks_list, handedness="Right", mode="words"):
+    def process_landmarks(self, hands_data, mode="words"):
         """
         Process landmarks directly received from browser MediaPipe JS.
-        landmarks_list: list of dicts [{'x': float, 'y': float, 'z': float}] (length 21) or None
+        hands_data: list of dicts [{'landmarks': [...], 'handedness': 'Right'}]
         """
-        if not landmarks_list or len(landmarks_list) != 21:
+        if not hands_data or len(hands_data) == 0:
             raw_gesture = "No Hand"
             raw_confidence = 0.0
             hand_present = False
             landmarks_out = []
         else:
             hand_present = True
-            raw_landmarks = [LandmarkWrapper(lm.get('x', 0.0), lm.get('y', 0.0), lm.get('z', 0.0)) for lm in landmarks_list]
-            hand_landmarks = HandLandmarksWrapper(raw_landmarks)
-            landmarks_out = [{"x": lm.x, "y": lm.y} for lm in raw_landmarks]
-            raw_gesture, raw_confidence = self.detector.detect_gesture(hand_landmarks, handedness, mode)
+            
+            # Extract Hand 1
+            hand_1_data = hands_data[0]
+            raw_landmarks_1 = [LandmarkWrapper(lm.get('x', 0.0), lm.get('y', 0.0), lm.get('z', 0.0)) for lm in hand_1_data.get('landmarks', [])]
+            hand_1_landmarks = HandLandmarksWrapper(raw_landmarks_1)
+            handedness_1 = hand_1_data.get('handedness', 'Right')
+            landmarks_out = [{"x": lm.x, "y": lm.y} for lm in raw_landmarks_1] # return primary hand points for legacy frontend draw
+            
+            # Extract Hand 2 if present
+            hand_2_landmarks = None
+            handedness_2 = None
+            if len(hands_data) > 1:
+                hand_2_data = hands_data[1]
+                raw_landmarks_2 = [LandmarkWrapper(lm.get('x', 0.0), lm.get('y', 0.0), lm.get('z', 0.0)) for lm in hand_2_data.get('landmarks', [])]
+                hand_2_landmarks = HandLandmarksWrapper(raw_landmarks_2)
+                handedness_2 = hand_2_data.get('handedness', 'Left')
+
+            raw_gesture, raw_confidence = self.detector.detect_gesture(hand_1_landmarks, handedness_1, hand_2_landmarks, handedness_2, mode)
 
         with self.lock:
             locked_gest, smoothed_conf, was_updated = self.stabilizer.add_prediction(raw_gesture, raw_confidence)
@@ -128,47 +142,22 @@ class GestureEngine:
             "was_updated": was_updated
         }
 
-    def process_frame(self, frame_bytes):
+    def process_frame(self, frame_bytes, mode="words"):
         """
         Process a JPEG frame (bytes) received from the browser as fallback.
         Returns dict with gesture, confidence, landmarks, has_hand.
         """
-        import base64
         try:
+            import cv2
             nparr = np.frombuffer(frame_bytes, np.uint8)
             frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if frame is None:
-                return self._empty_result()
-
-            h, w, _ = frame.shape
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-            raw_gesture = "No Hand"
-            raw_confidence = 0.0
             hand_present = False
             landmarks_out = []
+            raw_gesture = "No Hand"
+            raw_confidence = 0.0
 
-            if self.use_tasks_api and self.landmarker:
-                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-                result = self.landmarker.detect(mp_image)
-
-                if result.hand_landmarks:
-                    hand_present = True
-                    raw_landmarks = result.hand_landmarks[0]
-                    hand_landmarks = HandLandmarksWrapper(raw_landmarks)
-
-                    landmarks_out = [{"x": lm.x, "y": lm.y} for lm in raw_landmarks]
-
-                    handedness = "Right"
-                    if result.handedness:
-                        try:
-                            handedness = result.handedness[0][0].category_name
-                        except:
-                            pass
-
-                    raw_gesture, raw_confidence = self.detector.detect_gesture(hand_landmarks, handedness, mode)
-
-            elif hasattr(self, 'hands'):
+            if hasattr(self, 'hands'):
                 results = self.hands.process(rgb_frame)
                 if results.multi_hand_landmarks:
                     hand_present = True
@@ -180,7 +169,7 @@ class GestureEngine:
                         handedness = results.multi_handedness[0].classification[0].label
                     except:
                         pass
-                    raw_gesture, raw_confidence = self.detector.detect_gesture(hand_lm, handedness)
+                    raw_gesture, raw_confidence = self.detector.detect_gesture(hand_lm, handedness, None, None, mode)
 
             with self.lock:
                 locked_gest, smoothed_conf, was_updated = self.stabilizer.add_prediction(raw_gesture, raw_confidence)
@@ -244,25 +233,20 @@ def index(request):
 
 @csrf_exempt
 def process_frame(request):
-    """
-    Receives either:
-    1. JSON payload with `landmarks` detected by browser MediaPipe JS
-    2. Raw JPEG image bytes / base64
-    """
+    # Receives either:
+    # 1. JSON payload with `landmarks` detected by browser MediaPipe JS
+    # 2. Raw JPEG image bytes / base64
     if request.method != 'POST':
         return JsonResponse({"error": "POST only"}, status=405)
-    
-    mode = request.GET.get('mode', 'words')
 
     content_type = request.headers.get('Content-Type', '')
 
     if 'application/json' in content_type:
         try:
             data = json.loads(request.body.decode('utf-8'))
-            landmarks = data.get('landmarks')
-            handedness = data.get('handedness', 'Right')
+            hands_data = data.get('hands', [])
             mode = data.get('mode', 'words')
-            result = get_engine().process_landmarks(landmarks, handedness, mode=mode)
+            result = get_engine().process_landmarks(hands_data, mode=mode)
             return JsonResponse(result)
         except Exception as e:
             logger.error(f"JSON parsing error in process_frame: {e}")
@@ -280,14 +264,15 @@ def process_frame(request):
         except Exception as e:
             return JsonResponse({"error": f"Base64 decode failed: {e}"}, status=400)
 
-    result = get_engine().process_frame(body)
+    mode = request.GET.get('mode', 'words')
+    result = get_engine().process_frame(body, mode)
     return JsonResponse(result)
 
 
 
 @csrf_exempt
 def prediction_data(request):
-    """Returns current history/state (used for polling fallback)."""
+    # Returns current history/state (used for polling fallback).
     engine = get_engine()
     return JsonResponse({
         "gesture": "No Hand",
@@ -302,7 +287,7 @@ def prediction_data(request):
 
 @csrf_exempt
 def toggle_camera(request):
-    """Stub — camera is now browser-side. Returns ok."""
+    # Stub - camera is now browser-side. Returns ok.
     return JsonResponse({"status": "ok"})
 
 
@@ -323,6 +308,6 @@ def speak(request):
 
 @csrf_exempt
 def clear_history(request):
-    """Clears the gesture history."""
+    # Clears the gesture history.
     get_engine().clear_history()
     return JsonResponse({"status": "ok"})

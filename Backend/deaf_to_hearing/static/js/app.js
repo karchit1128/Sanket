@@ -14,33 +14,27 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedSpeechVoice = null;
     let speechRate = 1.0;
     
+    // Gesture Mode (Words vs Numbers)
+    let currentGestureMode = 'words';
+    
     // Telemetry storage for Chart.js
     const maxChartDataPoints = 30;
     const chartLabels = Array.from({length: maxChartDataPoints}, (_, i) => "");
     const chartData = Array(maxChartDataPoints).fill(0);
 
     // --- DOM Elements ---
-    let currentGestureMode = 'words'; // 'words' | 'numbers'
-
     const elements = {
         webcamImage: document.getElementById('webcamImage'),
-        activeGestureText: document.getElementById('activeGestureText'),
-        activeGestureIcon: document.getElementById('activeGestureIcon'),
-        confidenceFill: document.getElementById('confidenceFill'),
-        confidenceText: document.getElementById('confidenceText'),
-        chartTimeSpan: document.getElementById('chartTimeSpan'),
-        cameraStatusText: document.getElementById('cameraStatusText'),
+        cameraPlaceholder: document.getElementById('cameraPlaceholder'),
+        scanningLine: document.getElementById('scanningLine'),
         initCameraBtn: document.getElementById('initCameraBtn'),
         toggleCameraBtn: document.getElementById('toggleCameraBtn'),
+        cameraToggleIcon: document.getElementById('cameraToggleIcon'),
+        cameraToggleText: document.getElementById('cameraToggleText'),
         screenshotBtn: document.getElementById('screenshotBtn'),
         modeToggleBtn: document.getElementById('modeToggleBtn'),
         modeToggleIcon: document.getElementById('modeToggleIcon'),
         modeToggleText: document.getElementById('modeToggleText'),
-        btnVoiceBrowser: document.getElementById('btnVoiceBrowser'),
-        cameraPlaceholder: document.getElementById('cameraPlaceholder'),
-        scanningLine: document.getElementById('scanningLine'),
-        cameraToggleIcon: document.getElementById('cameraToggleIcon'),
-        cameraToggleText: document.getElementById('cameraToggleText'),
         
         // Stats
         cameraStatusBadge: document.getElementById('cameraStatusBadge'),
@@ -248,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Camera State ---
     let cameraStream = null;
     let frameInterval = null;
-    let lastLandmarks = [];
+    let lastHandsData = [];
     let browserHandLandmarker = null;   // MediaPipe JS landmarker
     let mpReady = false;
 
@@ -293,7 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     delegate: 'GPU'
                 },
                 runningMode: 'VIDEO',
-                numHands: 1,
+                numHands: 2, // Upgraded to support 2 hands
                 minHandDetectionConfidence: 0.5,
                 minHandPresenceConfidence: 0.5,
                 minTrackingConfidence: 0.5
@@ -308,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- Draw video + landmark skeleton onto display canvas ---
-    function drawFrame(landmarks, gestureLabel) {
+    function drawFrame(handsData, gestureLabel) {
         if (!displayCanvas) return;
         const dctx = displayCanvas.getContext('2d');
         const W = displayCanvas.width;
@@ -319,26 +313,28 @@ document.addEventListener('DOMContentLoaded', () => {
         dctx.drawImage(videoEl, -W, 0, W, H);
         dctx.restore();
 
-        if (landmarks && landmarks.length === 21) {
-            const pts = landmarks.map(lm => ({
-                x: (1 - lm.x) * W,
-                y: lm.y * H
-            }));
+        if (handsData && handsData.length > 0) {
+            for (const hand of handsData) {
+                const pts = hand.landmarks.map(lm => ({
+                    x: (1 - lm.x) * W,
+                    y: lm.y * H
+                }));
 
-            dctx.strokeStyle = 'rgba(255,255,255,0.85)';
-            dctx.lineWidth = 2;
-            for (const [a, b] of HAND_CONNECTIONS) {
-                dctx.beginPath();
-                dctx.moveTo(pts[a].x, pts[a].y);
-                dctx.lineTo(pts[b].x, pts[b].y);
-                dctx.stroke();
-            }
+                dctx.strokeStyle = hand.handedness === 'Left' ? 'rgba(255,100,100,0.85)' : 'rgba(100,255,100,0.85)';
+                dctx.lineWidth = 2;
+                for (const [a, b] of HAND_CONNECTIONS) {
+                    dctx.beginPath();
+                    dctx.moveTo(pts[a].x, pts[a].y);
+                    dctx.lineTo(pts[b].x, pts[b].y);
+                    dctx.stroke();
+                }
 
-            for (const pt of pts) {
-                dctx.beginPath();
-                dctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
-                dctx.fillStyle = '#f0f040';
-                dctx.fill();
+                for (const pt of pts) {
+                    dctx.beginPath();
+                    dctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+                    dctx.fillStyle = '#f0f040';
+                    dctx.fill();
+                }
             }
 
             if (gestureLabel && gestureLabel !== 'No Hand' && gestureLabel !== 'Unknown') {
@@ -382,7 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (frameInterval) { cancelAnimationFrame(frameInterval); frameInterval = null; }
         if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
         videoEl.srcObject = null;
-        lastLandmarks = [];
+        lastHandsData = [];
         setCameraUIActive(false);
         resetTelemetryUI();
     }
@@ -397,34 +393,38 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Detect hands at 30fps via rAF, but only POST to server at ~8fps
-            let landmarks = [];
+            let currentHandsData = [];
 
             if (mpReady && browserHandLandmarker) {
                 // Browser-side MediaPipe detection
                 try {
                     const result = browserHandLandmarker.detectForVideo(videoEl, timestamp);
                     if (result && result.landmarks && result.landmarks.length > 0) {
-                        landmarks = result.landmarks[0].map(lm => ({ x: lm.x, y: lm.y }));
-                        lastLandmarks = landmarks;
-                    } else {
-                        lastLandmarks = [];
+                        for (let i = 0; i < result.landmarks.length; i++) {
+                            let lm = result.landmarks[i].map(l => ({ x: l.x, y: l.y, z: l.z || 0.0 }));
+                            let hType = "Right";
+                            if (result.handednesses && result.handednesses[i] && result.handednesses[i][0]) {
+                                hType = result.handednesses[i][0].categoryName;
+                            }
+                            currentHandsData.push({ landmarks: lm, handedness: hType });
+                        }
                     }
                 } catch(e) {
                     // ignore frame errors
                 }
             }
+            lastHandsData = currentHandsData;
 
             // Draw to display at full frame rate
-            drawFrame(lastLandmarks, elements.activeGestureText.textContent);
+            drawFrame(lastHandsData, elements.activeGestureText.textContent);
 
             // Send landmarks to server for gesture classification at ~8fps
             if (timestamp - lastSendTime > 125) {
                 lastSendTime = timestamp;
-                const landmarksToSend = lastLandmarks.length > 0 ? lastLandmarks : null;
                 fetch('/process_frame', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ landmarks: landmarksToSend, has_hand: landmarksToSend !== null, mode: currentGestureMode })
+                    body: JSON.stringify({ hands: lastHandsData, mode: currentGestureMode })
                 })
                 .then(res => res.json())
                 .then(data => updateTelemetryUI(data))
@@ -702,23 +702,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Set Number/Word Mode ---
+    // --- Set Number/Word/Alphabet Mode ---
     function setGestureMode(mode) {
         if (mode === 'numbers') {
             currentGestureMode = 'numbers';
             elements.modeToggleIcon.className = 'fa-solid fa-hashtag me-2 text-magenta';
             elements.modeToggleText.textContent = 'Number Mode';
+            elements.modeToggleBtn.classList.remove('border-cyan');
             elements.modeToggleBtn.classList.add('border-magenta');
+        } else if (mode === 'alphabets') {
+            currentGestureMode = 'alphabets';
+            elements.modeToggleIcon.className = 'fa-solid fa-a me-2 text-cyan';
+            elements.modeToggleText.textContent = 'Alphabet Mode';
+            elements.modeToggleBtn.classList.remove('border-magenta');
+            elements.modeToggleBtn.classList.add('border-cyan');
         } else {
             currentGestureMode = 'words';
             elements.modeToggleIcon.className = 'fa-solid fa-font me-2';
             elements.modeToggleText.textContent = 'Word Mode';
-            elements.modeToggleBtn.classList.remove('border-magenta');
+            elements.modeToggleBtn.classList.remove('border-magenta', 'border-cyan');
         }
     }
 
     function toggleGestureMode() {
-        setGestureMode(currentGestureMode === 'words' ? 'numbers' : 'words');
+        if (currentGestureMode === 'words') setGestureMode('numbers');
+        else if (currentGestureMode === 'numbers') setGestureMode('alphabets');
+        else setGestureMode('words');
     }
 
     // --- Bind DOM Interactions & Triggers ---
@@ -781,12 +790,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (currentVoiceMode === 'browser') setVoiceMode('backend');
                 else if (currentVoiceMode === 'backend') setVoiceMode('muted');
                 else setVoiceMode('browser');
+            } else if (key === 'a') {
+                setGestureMode('alphabets');
             } else if (key === 'w') {
-                if (currentGestureMode === 'words') setGestureMode('numbers');
-                else setGestureMode('words');
+                setGestureMode('words');
             } else if (key === 'n') {
-                if (currentGestureMode === 'numbers') setGestureMode('words');
-                else setGestureMode('numbers');
+                setGestureMode('numbers');
             } else if (key === 'q') {
                 // Escape key or Q shuts camera safely
                 toggleWebcam('stop');

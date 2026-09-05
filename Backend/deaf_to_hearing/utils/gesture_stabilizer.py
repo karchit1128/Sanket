@@ -72,8 +72,9 @@ class GestureStabilizer:
             is_confident = smoothed_conf >= self.min_confidence
             cooldown_expired = (current_time - self.last_transition_time) >= self.cooldown_seconds
             
-            # Special fast-path for "No Hand" or "Unknown" to clear the screen instantly
-            if dominant_gesture in ["No Hand", "Unknown"]:
+            # Special fast-path for "No Hand" to clear the screen instantly
+            # We explicitly exclude "Unknown" from here so it undergoes normal stabilization, preventing erratic UI flashing.
+            if dominant_gesture in ["No Hand"]:
                 is_stable = True
                 is_confident = True
                 cooldown_expired = True

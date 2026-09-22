@@ -696,8 +696,19 @@ export const useAvatarRenderer = (config: AvatarRendererConfig) => {
         }
     }, []);
 
+    const stopSignSequence = useCallback(() => {
+        const ctx = contextRef.current;
+        ctx.animations = [];
+        ctx.pending = false;
+        setDefaultPose(ctx);
+        if (onTextUpdateRef.current) {
+            onTextUpdateRef.current("CLEAR_NOW");
+        }
+    }, []);
+
     return {
         executeSignSequence,
+        stopSignSequence,
         context: contextRef.current,
     };
 };

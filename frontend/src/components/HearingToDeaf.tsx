@@ -15,7 +15,7 @@ export default function HearingToDeaf() {
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const { executeSignSequence } = useAvatarRenderer({
+  const { executeSignSequence, stopSignSequence } = useAvatarRenderer({
     containerRef: containerRef,
     modelPath: "/ybot.glb",
     animationSpeed: 1.2,
@@ -109,6 +109,16 @@ export default function HearingToDeaf() {
                   >
                     <Mic size={18} className={isRecording ? "animate-pulse" : "sm:mr-2"} />
                     <span className="hidden sm:inline font-semibold">{isRecording ? "Listening" : "Use Voice"}</span>
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={stopSignSequence}
+                    className="shrink-0 h-10 w-10 sm:w-auto sm:px-4 rounded-xl flex items-center justify-center transition-all duration-300 btn-action-glass hover:text-red-400 border border-white/10"
+                    title="Pause/Stop Animation"
+                  >
+                    <i className="fa-solid fa-stop sm:mr-2 text-[14px]"></i>
+                    <span className="hidden sm:inline font-semibold">Pause</span>
                   </button>
                   {/* Custom Language Dropdown */}
                   <div className="relative hidden sm:block">

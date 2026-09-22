@@ -185,21 +185,21 @@ def translate_to_isl_gloss(text: str) -> str:
     )
 
     # -------------------------------------------------------------
-    # LAYER 1: PRIMARY LLM (Groq via direct HTTP - no SDK timeout issues)
+    # LAYER 1: PRIMARY LLM (OpenAI via direct HTTP)
     # -------------------------------------------------------------
-    groq_key = os.getenv("GROQ_API_KEY") or os.getenv("BACKUP_GROQ_API_KEY")
-    print(f"[DEBUG] Input: {text!r} | Normalized: {normalized!r} | Groq key present: {bool(groq_key)}")
+    openai_key = os.getenv("OPENAI_API_KEY")
+    print(f"[DEBUG] Input: {text!r} | Normalized: {normalized!r} | OpenAI key present: {bool(openai_key)}")
 
-    if groq_key and groq_key.strip().startswith("gsk_"):
+    if openai_key and openai_key.strip().startswith("sk-"):
         try:
             resp = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
+                "https://api.openai.com/v1/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {groq_key.strip()}",
+                    "Authorization": f"Bearer {openai_key.strip()}",
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "qwen/qwen3.6-27b",
+                    "model": "gpt-5.4-nano",
                     "messages": [
                         {"role": "system", "content": "You are a strict ISL Gloss translator. If input is not English (e.g. Hindi, Marathi, Gujarati), translate to English first. Output ONLY uppercase English words separated by single spaces. Do not output any non-English characters. No explanations."},
                         {"role": "user", "content": prompt}
@@ -219,15 +219,15 @@ def translate_to_isl_gloss(text: str) -> str:
                 # Only accept pure ASCII uppercase English words
                 content = re.sub(r'[^A-Z\s]', '', content).strip()
                 if content:
-                    print(f"[LLM Router] Groq success: {content!r}")
+                    print(f"[LLM Router] OpenAI success: {content!r}")
                     _TRANSLATION_CACHE[normalized] = content
                     return content
                 else:
-                    return f"GROQ CLEANING ERROR: returned empty (Raw: {resp.json()['choices'][0]['message']['content']})"
+                    return f"OPENAI CLEANING ERROR: returned empty (Raw: {resp.json()['choices'][0]['message']['content']})"
             else:
-                return f"GROQ HTTP ERROR: {resp.status_code} {resp.text[:200]}"
+                return f"OPENAI HTTP ERROR: {resp.status_code} {resp.text[:200]}"
         except Exception as e:
-            return f"GROQ EXCEPTION: {e}"
+            return f"OPENAI EXCEPTION: {e}"
 
     # -------------------------------------------------------------
     # LAYER 2: SUPPORTIVE SECONDARY LLM (Google Gemini)
